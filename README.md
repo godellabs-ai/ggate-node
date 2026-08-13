@@ -1,0 +1,145 @@
+# Godel's Gate Node.js SDK
+
+`@ggate/sdk` turns an AI agent application into a Godel's Gate collector: a few lines of code
+capture framework activity (prompts, responses, tool calls, tool results, file access) as
+`gate/v1` runtime events, send them for detection + policy evaluation, and — in sync mode —
+enforce the returned verdict.
+
+SDK events carry `identity.agent_source = "agent-framework"` and
+`collector.collector_type = "sdk"`; the specific AI framework (langchain, openai, autogen, …)
+travels in `collector.labels.framework` and `source.client`, which the Console renders as
+`agent-framework:<framework>` connectors.
+
+The Python SDK is [godellabs-ai/ggate-python](https://github.com/godellabs-ai/ggate-python).
+
+## Install
+
+```bash
+npm install git+https://github.com/godellabs-ai/ggate-node.git
+```
+
+The package compiles on install (`prepare`), so no separate build step is needed. Node 18.17+.
+
+## Quickstart
+
+```ts
+import { init, scanPrompt, scanResponse, instrument } from "@ggate/sdk";
+
+init({ mode: "sync" });
+
+const decision = await scanPrompt("Summarize this document", {
+  framework: "langchain",
+  model: "gpt-4o",
+});
+if (decision.blocked) throw new Error(decision.message);
+
+await scanResponse("Summary text", { framework: "langchain", model: "gpt-4o" });
+
+const openai = instrument("openai", { client: new OpenAI() });
+```
+
+Framework instrumentation — see [docs/framework-coverage.md](docs/framework-coverage.md) for the
+full matrix of what each adapter hooks and where it can enforce.
+
+## Connecting to a Console
+
+The Console is the SDK's only destination. Set its URL and an IAM API key (Console UI →
+**Admin → API keys**) and scans go to `POST /api/v1/scan`, which runs the full pipeline —
+normalize, OCR/extraction of image and file attachments, deterministic rules, the security
+classifier, DLP, threat intel, document intelligence, and policy — records the event, and
+returns the verdict:
+
+```bash
+GGATE_CONSOLE_URL=https://godels-gate.example.com
+GGATE_API_KEY=godel_...
+```
+
+The API key is exchanged once at `/api/v1/agent/token` for a short-lived JWT, so per-scan auth is
+a stateless signature check rather than a password hash.
+
+Both are required. With either missing the SDK logs one warning at startup and every scan fails
+open with a message naming what is unset — a configuration mistake must not break the
+application, and it must not silently look like an all-clear either.
+
+The SDK sends **unredacted** content by default. The Console is the detection engine, so
+client-side masking would hide exactly the secrets it exists to catch; set `GGATE_REDACT=1` for
+deployments that would rather lose those detections than let the content leave the process.
+
+## Verdicts
+
+A scan returns a `Decision`: `verdict` (`pass` | `warn` | `block` | `hard_block` | `system`),
+`message`, `reason_codes`, and — on warn/block — a `detection` headline naming which protection
+fired (`{ source: "sensitive_data", detail: "aws_access_key_id", … }`). `decision.blocked` /
+`decision.allowed` are the convenience accessors; passing `enforce: true` throws
+`GgateBlockedError` on a block instead.
+
+## Latency and failure semantics
+
+The SDK never breaks the host application:
+
+- **Sync mode** blocks a prompt/tool-call scan until the verdict, bounded by the scan budget
+  (`GGATE_TIMEOUT_MS`, else 4s — a ceiling, not a per-call cost; raise it for prompts carrying
+  attachments, where the Console also extracts and OCRs the file). Responses, tool results, and
+  file events are queued in the background regardless of mode.
+- **Async mode** (`init({ mode: "async" })`) queues everything and always returns an immediate
+  pass — observability without gating.
+- **Fail open**: any problem reaching the Console (unreachable, restarting, slow, rejected key,
+  unconfigured) yields an allow decision with `fail_open: true`. After a failure the SDK fails
+  open instantly for a cooldown (`GGATE_COOLDOWN_SECS`, default 30) instead of re-calling a
+  struggling Console on every request.
+- **Background queue**: bounded (`GGATE_QUEUE_MAX`, drop-oldest), retries transient failures
+  with capped backoff, and its shutdown flush is deadline-bounded (`GGATE_FLUSH_TIMEOUT_MS`,
+  default 3000) so application exit never hangs. Call `flush()` to drain explicitly.
+- **Redaction**: with `GGATE_REDACT` on, known secret patterns are masked before anything leaves
+  the process; the original content hash + mask count travel in the scan's redaction summary.
+
+## Configuration
+
+`GGATE_CONSOLE_URL` and `GGATE_API_KEY` are required; everything else has a default. Identity
+falls back to the device config at `~/.ggate/config.yaml` when an agent installed on the same
+machine wrote one — read for identity only, so SDK events land under the same org/seat/device as
+that machine's other collectors. Environment variables:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `GGATE_MODE` | `sync` (enforce) or `async` (observe) | `sync` |
+| `GGATE_CONSOLE_URL` | Console base URL, e.g. `https://godels-gate.example.com` — **required** | unset |
+| `GGATE_API_KEY` | Console IAM API key (`godel_...`) — **required** | unset |
+| `GGATE_CONSOLE_INSECURE` | Dev only: accept a self-signed Console certificate | off |
+| `GGATE_TIMEOUT_MS` | sync scan budget | 4000 |
+| `GGATE_DISABLED` | `1` disables the SDK entirely | off |
+| `GGATE_HOME` | where the device config is looked for | `~/.ggate` |
+| `GGATE_CONFIG` | device config.yaml path (identity defaults only) | `$GGATE_HOME/config.yaml` |
+| `GGATE_ORG_ID` | organization id | config `org_id`, else `local` |
+| `GGATE_USER` / `GGATE_USER_EMAIL` | seat identity | config `user_email`, else `<os-user>@<host>` |
+| `GGATE_WORKSTATION_ID` | stable device id | config `workstation_id` |
+| `GGATE_COLLECTOR_ID` | collector id | `<workstation_id>:ggate-node-sdk` |
+| `GGATE_QUEUE_MAX` | background queue bound | 1024 |
+| `GGATE_COOLDOWN_SECS` | fail-open cooldown after a failure | 30 |
+| `GGATE_FLUSH_TIMEOUT_MS` | default/atexit flush deadline | 3000 |
+| `GGATE_REDACT` | mask secrets before sending | off |
+| `GGATE_CAPTURE_FILE_TEXT` | capture attachment content (else metadata only) | off |
+| `GGATE_MAX_FILE_BYTES` | attachment capture cap | 65536 |
+
+The same values can be passed programmatically to `init({ … })`.
+
+## Example
+
+[examples/jira-project-assistant](examples/jira-project-assistant) is a complete application: a
+LangGraph Jira assistant whose prompts, MCP tool traffic, attachments, and answers are all
+scanned, with blocking chat UX.
+
+## Development
+
+```bash
+npm install
+npm run build     # src/ -> dist/ (tsc)
+npm test          # node --test dist/tests/
+```
+
+See [docs/testing-guide.md](docs/testing-guide.md) for the layered test approach — unit tests, a
+live-Console smoke test, policy enforcement, and per-framework checks.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
