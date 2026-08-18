@@ -9,6 +9,12 @@ import { ConsoleTransport } from "../core/console-transport.js";
 import { Config } from "../core/config.js";
 import { instrument } from "../index.js";
 
+// Every Client requires a declared agent name and owning team. The suite supplies them the way a
+// containerized deployment does — through the environment — so each test can keep naming only the
+// setting it is actually exercising. `identity is required` below removes them again.
+process.env.GGATE_AGENT_NAME ??= "Test Agent";
+process.env.GGATE_TEAM ??= "Test Team";
+
 class FakeTransport {
   requests: Record<string, any>[] = [];
 
@@ -134,6 +140,59 @@ test("breaker fails open without re-dialing after a transport failure", async ()
 
   assert.equal(calls, tripped);
   assert.equal(decision.fail_open, true);
+});
+
+test("every event names the agent and its owning team", async () => {
+  const transport = new FakeTransport();
+  const client = new Client(
+    { mode: "sync", agentName: "JIRA Project Assistant", team: "Platform Engineering" },
+    transport as any,
+  );
+
+  await client.scanPrompt("hello", { framework: "langgraph" });
+
+  const scanTextReq = transport.requests.find((r) => r.op === "scan_text")!;
+  assert.equal(scanTextReq.event.identity.agent_name, "JIRA Project Assistant");
+  assert.equal(scanTextReq.event.identity.team, "Platform Engineering");
+  // The declared name replaces nothing: the framework still travels where the Console reads it
+  // for connector/logo resolution.
+  assert.equal(scanTextReq.event.identity.agent_source, "agent-framework");
+  assert.equal(scanTextReq.event.collector.labels.framework, "langgraph");
+  assert.equal(scanTextReq.event.source.client, "langgraph");
+
+  const readyReq = transport.requests.find((r) => r.op === "collector_ready")!;
+  assert.equal(readyReq.metadata.agent_name, "JIRA Project Assistant");
+  assert.equal(readyReq.metadata.team, "Platform Engineering");
+});
+
+test("identity is required, and an explicit value beats the environment", () => {
+  const saved = { name: process.env.GGATE_AGENT_NAME, team: process.env.GGATE_TEAM };
+  delete process.env.GGATE_AGENT_NAME;
+  delete process.env.GGATE_TEAM;
+  try {
+    // Unlike a missing Console (which fails open), an unnamed agent is refused at construction:
+    // it would otherwise mislabel every event it ever writes.
+    assert.throws(() => new Client({ enabled: false }), /agentName is required/);
+    assert.throws(
+      () => new Client({ agentName: "Support Bot", enabled: false }),
+      /team is required/,
+    );
+    // Whitespace is not a name.
+    assert.throws(() => new Client({ agentName: "  ", team: "Ops", enabled: false }), /agentName/);
+
+    process.env.GGATE_AGENT_NAME = "Env Agent";
+    process.env.GGATE_TEAM = "Env Team";
+    assert.equal(new Client({ enabled: false }).config.agentName, "Env Agent");
+    assert.equal(
+      new Client({ agentName: "Explicit Agent", enabled: false }).config.agentName,
+      "Explicit Agent",
+    );
+  } finally {
+    delete process.env.GGATE_AGENT_NAME;
+    delete process.env.GGATE_TEAM;
+    if (saved.name != null) process.env.GGATE_AGENT_NAME = saved.name;
+    if (saved.team != null) process.env.GGATE_TEAM = saved.team;
+  }
 });
 
 test("redaction is off by default; an explicit choice wins", () => {

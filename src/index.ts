@@ -8,11 +8,19 @@ import { ConfigOptions, ScanOptions } from "./core/types.js";
 
 let client: Client | undefined;
 
-export function init(options: ConfigOptions = {}): Client {
+/**
+ * Configure the process-wide client. `agentName` and `team` are required — see
+ * {@link ConfigOptions} — so that every event says which agent produced it and who owns it.
+ */
+export function init(options: ConfigOptions): Client {
   client = new Client(options);
   return client;
 }
 
+/**
+ * The process-wide client, built from the environment when {@link init} was never called. That
+ * fallback still needs `GGATE_AGENT_NAME` and `GGATE_TEAM`, and throws naming whichever is absent.
+ */
 export function getClient(): Client {
   if (!client) client = new Client();
   return client;
@@ -72,4 +80,4 @@ export { instrumentOpenAI } from "./adapters/openai.js";
 export { langchainCallback } from "./adapters/langchain.js";
 export { llamaIndexCallback } from "./adapters/llamaindex.js";
 export { semanticKernelFilters } from "./adapters/semantic-kernel.js";
-export type { Attachment, ConfigOptions, Decision, DetectionSummary, Mode, ScanOptions, TokenUsage } from "./core/types.js";
+export type { Attachment, ConfigDefaults, ConfigOptions, Decision, DetectionSummary, Mode, ScanOptions, TokenUsage } from "./core/types.js";

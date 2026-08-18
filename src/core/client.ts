@@ -17,7 +17,7 @@ import { ConsoleTransport, GgateTransportError, type TransportLike } from "./con
 import { decisionFromResponse, failOpenDecision, passDecision } from "./decision.js";
 import { RuntimeEventBuilder, SDK_VERSION } from "./event.js";
 import { DeliveryQueue } from "./queue.js";
-import { ConfigOptions, Decision, ScanOptions } from "./types.js";
+import { ConfigDefaults, Decision, ScanOptions } from "./types.js";
 
 export class GgateBlockedError extends Error {
   constructor(public readonly decision: Decision) {
@@ -69,7 +69,12 @@ export class Client {
   private readonly queue: DeliveryQueue;
   private readonly breaker: Breaker;
 
-  constructor(options: ConfigOptions = {}, transport?: TransportLike) {
+  /**
+   * `options.agentName` and `options.team` are required (see {@link ConfigOptions}); they may come
+   * from `GGATE_AGENT_NAME` / `GGATE_TEAM` instead, which is why they are optional in this
+   * signature. Construction throws when neither source supplies them.
+   */
+  constructor(options: ConfigDefaults = {}, transport?: TransportLike) {
     this.config = new Config(options);
     if (transport) {
       this.transport = transport;
@@ -90,7 +95,12 @@ export class Client {
         collector_type: "sdk",
         name: "ggate-node-sdk",
         agents: ["agent-framework"],
-        metadata: { language: "javascript", version: SDK_VERSION },
+        metadata: {
+          language: "javascript",
+          version: SDK_VERSION,
+          agent_name: this.config.agentName,
+          team: this.config.team,
+        },
       });
     }
   }

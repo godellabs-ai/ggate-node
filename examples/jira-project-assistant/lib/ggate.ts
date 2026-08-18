@@ -8,6 +8,10 @@
  *
  * The SDK scans against the Console named by GGATE_CONSOLE_URL, authenticated
  * with GGATE_API_KEY. That is its only destination.
+ *
+ * Every event is filed under the agent's declared name and owning team, so the Console lists
+ * this assistant's sessions as "JIRA Project Assistant" rather than as the framework it happens
+ * to be built on.
  */
 
 import { Client, type Attachment, type Decision } from "@ggate/sdk";
@@ -15,6 +19,14 @@ import { Client, type Attachment, type Decision } from "@ggate/sdk";
 import type { FetchedAttachment } from "./jira";
 
 const FRAMEWORK = "langgraph";
+
+/** What this agent is, as it appears in the Console's Session column. Part of the application,
+ * not a deployment knob: every install of this assistant is the same named agent. */
+const AGENT_NAME = "JIRA Project Assistant";
+
+/** Who is accountable for it. Deployment-specific, so it comes from the environment; the default
+ * keeps the example runnable before anyone has set GGATE_TEAM. */
+const TEAM = process.env.GGATE_TEAM?.trim() || "Project Management";
 
 let client: Client | undefined;
 
@@ -24,6 +36,8 @@ export function ggate(): Client {
   if (!client) {
     const configured = Number(process.env.GGATE_TIMEOUT_MS);
     client = new Client({
+      agentName: AGENT_NAME,
+      team: TEAM,
       mode: "sync",
       timeoutMs:
         Number.isFinite(configured) && configured > 0 ? configured : 45_000,

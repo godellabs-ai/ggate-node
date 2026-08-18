@@ -34,7 +34,7 @@ GGATE_API_KEY=godel_... \
   node --input-type=module - <<'JS'
 import { init, scanPrompt } from "./dist/index.js";
 
-init({ mode: "sync" });
+init({ agentName: "Smoke Test", team: "Platform Engineering", mode: "sync" });
 const decision = await scanPrompt("Godel's Gate SDK smoke test", {
   framework: "manual",
   model: "test",
@@ -59,7 +59,7 @@ prompt will block unless the policy says so.
 ```ts
 import { init, scanPrompt } from "@ggate/sdk";
 
-init({ mode: "sync" });
+init({ agentName: "Smoke Test", team: "Platform Engineering", mode: "sync" });
 const decision = await scanPrompt("YOUR_KNOWN_BLOCK_FIXTURE", { framework: "manual" });
 if (decision.verdict !== "block") throw new Error(JSON.stringify(decision));
 ```

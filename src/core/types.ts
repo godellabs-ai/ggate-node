@@ -73,7 +73,12 @@ export interface ScanOptions {
   kind?: "shell" | "file_read" | "web" | "mcp" | "other";
 }
 
-export interface ConfigOptions {
+/**
+ * SDK settings with every field optional — the shape the `Client` constructor accepts, since
+ * `agentName`/`team` may arrive from the environment instead. {@link ConfigOptions} is the
+ * caller-facing version that requires them.
+ */
+export interface ConfigDefaults {
   mode?: Mode;
   timeoutMs?: number;
   /** Console base URL (e.g. https://godels-gate.example.com). Required, with apiKey — it is
@@ -95,4 +100,36 @@ export interface ConfigOptions {
   cooldownSecs?: number;
   /** Default deadline for flush() in milliseconds. */
   flushTimeoutMs?: number;
+  /** See {@link ConfigOptions.agentName}. Optional here only so `GGATE_AGENT_NAME` can supply it;
+   * a `Client` still refuses to construct without one. */
+  agentName?: string;
+  /** See {@link ConfigOptions.team}. Optional here only so `GGATE_TEAM` can supply it. */
+  team?: string;
+}
+
+/**
+ * Settings for {@link init}. `agentName` and `team` are required: the Console lists a session
+ * under the agent's name and holds its team accountable, and neither is something the SDK can
+ * infer from the process it happens to be running in.
+ *
+ * Both may equivalently come from `GGATE_AGENT_NAME` / `GGATE_TEAM` for deployments that
+ * configure through the environment; the `Client` constructor accepts either source and throws
+ * when it ends up with neither.
+ */
+export interface ConfigOptions extends ConfigDefaults {
+  /**
+   * What this agent is, as an operator would name it — `"JIRA Project Assistant"`, not the
+   * framework it is built on. It travels as `identity.agent_name` and is what the Console's
+   * Session column shows, so two assistants built on the same framework stay distinguishable.
+   */
+  agentName: string;
+  /**
+   * The team or owner accountable for this agent — `"Platform Engineering"`.
+   *
+   * A deployed agent has no person at a keyboard: the seat identity would otherwise fall back to
+   * the build machine's `<os-user>@<hostname>`, naming whoever ran the deploy rather than whoever
+   * owns the workload. The seat identity is still reported unchanged (the Console scopes event
+   * access by it); this is the name shown alongside it.
+   */
+  team: string;
 }
