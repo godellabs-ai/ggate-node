@@ -23,9 +23,9 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { Config } from "./config.js";
 import { RedactionSummary, redactText, sha256Hex } from "./redactor.js";
-import { Attachment, ScanOptions, TokenUsage } from "./types.js";
+import { Attachment, FileScanOptions, ScanOptions, ShellScanOptions, TokenUsage, WebScanOptions } from "./types.js";
 
-export const SDK_VERSION = "0.2.0";
+export const SDK_VERSION = "0.3.0";
 
 // Normalized to the Rust `std::env::consts` vocabulary the rest of the fleet reports
 // (platform_os is a Console dimension, so casing must match the hook collectors).
@@ -58,12 +58,16 @@ export class RuntimeEventBuilder {
     const payload = {
       surface: "response",
       text,
+      thinking: options.thinking,
+      thinking_len: options.thinking_len,
+      thinking_redacted: options.thinking_redacted,
       model: options.model,
       stop_reason: options.stop_reason,
       usage: tokenUsage(options.usage),
       api_calls: options.api_calls,
       tool_calls: options.tool_calls,
       duration_ms: options.duration_ms,
+      subagent_type: options.subagent_type,
       attachments: options.attachments || [],
     };
     return this.event("post", payload, text, options);
@@ -80,6 +84,7 @@ export class RuntimeEventBuilder {
         tool,
         input_summary: inputSummary,
         service: options.service,
+        server_info: options.server_info,
       },
       typeof inputSummary === "string" ? inputSummary : JSON.stringify(inputSummary ?? tool),
       options,
@@ -96,11 +101,46 @@ export class RuntimeEventBuilder {
         server: options.server,
         service: options.service,
         output,
-        ok: true,
+        output_len: options.output_len,
+        truncated: options.truncated,
+        exit_code: options.exit_code,
+        ok: options.ok ?? true,
+        duration_ms: options.duration_ms,
       },
       output,
       options,
     );
+  }
+
+  shell(command: string, options: ShellScanOptions = {}) {
+    return this.event("pre", { surface: "shell", command, argv: options.argv || [] }, command, options);
+  }
+
+  file(filename: string, options: FileScanOptions = {}) {
+    const action = options.action || "read";
+    if (!["read", "write", "edit", "delete"].includes(action)) {
+      throw new Error(`unsupported file action ${JSON.stringify(action)}`);
+    }
+    return this.event(
+      "pre",
+      {
+        surface: action === "read" ? "file_read" : "file_write",
+        action,
+        path: filename,
+        content_len: options.content_len,
+        content: options.content,
+      },
+      options.content || filename,
+      options,
+    );
+  }
+
+  web(url: string, options: WebScanOptions = {}) {
+    let domain = options.domain;
+    if (!domain) {
+      try { domain = new URL(url).hostname || undefined; } catch { /* receiver validates the URL */ }
+    }
+    return this.event("pre", { surface: "web", url, method: options.method, domain }, url, options);
   }
 
   private event(phase: string, payload: any, primaryText: string, options: ScanOptions) {
@@ -183,7 +223,7 @@ function tokenUsage(value: TokenUsage | undefined): Record<string, number> | und
 function redactPayload(payload: any): { payload: any; count: number } {
   const next = { ...payload };
   let count = 0;
-  for (const key of ["text", "output", "command"]) {
+  for (const key of ["text", "thinking", "output", "command", "content"]) {
     if (typeof next[key] === "string") {
       const redacted = redactText(next[key]);
       next[key] = redacted.text;

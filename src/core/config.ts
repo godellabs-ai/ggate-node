@@ -104,6 +104,7 @@ export class Config {
   consoleUrl?: string;
   apiKey?: string;
   consoleInsecureTls: boolean;
+  consoleCaCert?: string;
   queueMax: number;
   enabled: boolean;
   orgId: string;
@@ -113,6 +114,8 @@ export class Config {
   collectorId: string;
   labels: Record<string, string>;
   redact: boolean;
+  captureFileText: boolean;
+  maxFileBytes: number;
   cooldownSecs: number;
   flushTimeoutMs: number;
   /** Operator-declared name of this agent. Required — see {@link ConfigOptions.agentName}. */
@@ -133,6 +136,12 @@ export class Config {
     // Dev escape hatch: accept a self-signed Console cert (e.g. https://localhost).
     this.consoleInsecureTls =
       options.consoleInsecureTls ?? boolEnv("GGATE_CONSOLE_INSECURE", false);
+    const consoleCaCert =
+      trimmed(options.consoleCaCert) ?? trimmed(process.env.GGATE_CONSOLE_CA_CERT);
+    this.consoleCaCert = consoleCaCert ? expandHome(consoleCaCert) : undefined;
+    if (this.consoleInsecureTls && this.consoleCaCert) {
+      throw new Error("consoleCaCert and consoleInsecureTls cannot be used together");
+    }
     this.queueMax = options.queueMax ?? intEnv("GGATE_QUEUE_MAX", 1024);
     this.enabled = options.enabled ?? !boolEnv("GGATE_DISABLED", false);
     this.orgId = options.orgId ?? process.env.GGATE_ORG_ID ?? readConfigScalar("org_id") ?? "local";
@@ -150,6 +159,12 @@ export class Config {
     // exactly the secrets it exists to catch. `GGATE_REDACT=1` / `redact: true` turns it on for
     // deployments that would rather lose those detections than let the content leave the process.
     this.redact = options.redact ?? boolEnv("GGATE_REDACT", false);
+    this.captureFileText =
+      options.captureFileText ?? boolEnv("GGATE_CAPTURE_FILE_TEXT", false);
+    this.maxFileBytes = Math.max(
+      0,
+      options.maxFileBytes ?? intEnv("GGATE_MAX_FILE_BYTES", 65536),
+    );
     this.cooldownSecs = options.cooldownSecs ?? Math.max(0, intEnv("GGATE_COOLDOWN_SECS", 30));
     this.flushTimeoutMs = options.flushTimeoutMs ?? Math.max(0, intEnv("GGATE_FLUSH_TIMEOUT_MS", 3000));
     // Identity the SDK cannot infer, so it is asked for rather than guessed. Unlike a missing

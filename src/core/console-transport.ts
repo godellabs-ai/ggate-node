@@ -6,16 +6,16 @@
  * security classifier, DLP, threat intel, document intelligence, and policy —
  * records the event, and returns the decision.
  *
- * Auth is the same scale path the agents use: the IAM API key is exchanged
- * ONCE at `/api/v1/agent/token` for a short-lived JWT, and scans carry
- * `Authorization: Bearer` — verified signature-only on the Console, so the
- * per-scan cost is a stateless check instead of an Argon2 hash (~1s). The
- * token is re-exchanged shortly before expiry, or after a 401.
+ * Auth is the same scale path the Detection Engine uses: the IAM API key is exchanged
+ * at `/api/v1/detection-engine/token` for a short-lived JWT and long-lived refresh token. Scans
+ * carry the access token as `Authorization: Bearer`; the Console verifies its signature without an
+ * Argon2 hash on every request. The refresh endpoint rotates the pair shortly before expiry.
  *
  * Collector registration is implicit — the Console reconciles its fleet
  * registry from the events themselves — so `collector_ready` is a no-op.
  */
 
+import fs from "node:fs";
 import { Config } from "./config.js";
 
 export class GgateTransportError extends Error {
@@ -39,6 +39,7 @@ const GATEWAY_STATUSES = new Set([502, 503, 504]);
 export class ConsoleTransport {
   private readonly baseUrl: string;
   private accessToken?: string;
+  private refreshToken?: string;
   private tokenExpiresAt = 0;
   private exchange?: Promise<string>;
   private dispatcher?: Promise<unknown | undefined>;
@@ -48,16 +49,22 @@ export class ConsoleTransport {
   }
 
   /**
-   * An undici `Agent` that skips TLS verification, used only when
-   * `consoleInsecureTls` is set (dev with a self-signed Console cert). Built
-   * lazily and cached; undici is Node's built-in `fetch` backend, so the
-   * ignore comments keep bundlers from trying to resolve it at build time.
+   * An undici `Agent` configured with either an explicit private CA or the opt-in insecure dev
+   * escape hatch. Built lazily and cached; undici is Node's built-in `fetch` backend, so the ignore
+   * comments keep bundlers from trying to resolve it at build time.
    */
   private tlsDispatcher(): Promise<unknown | undefined> {
-    if (!this.config.consoleInsecureTls) return Promise.resolve(undefined);
+    if (!this.config.consoleInsecureTls && !this.config.consoleCaCert) return Promise.resolve(undefined);
     this.dispatcher ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ "undici")
-      .then(({ Agent }) => new Agent({ connect: { rejectUnauthorized: false } }))
-      .catch(() => undefined);
+      .then(({ Agent }) => {
+        const connect = this.config.consoleCaCert
+          ? { ca: fs.readFileSync(this.config.consoleCaCert), rejectUnauthorized: true }
+          : { rejectUnauthorized: false };
+        return new Agent({ connect });
+      })
+      .catch((error) => {
+        throw new GgateTransportError(`unable to configure Console TLS: ${error}`);
+      });
     return this.dispatcher;
   }
 
@@ -69,7 +76,7 @@ export class ConsoleTransport {
 
     let response = await this.scan(request, await this.token());
     if (response.status === 401) {
-      // Token expired server-side (or was revoked): exchange fresh and retry once.
+      // Token expired server-side (or was revoked): refresh the pair and retry once.
       this.accessToken = undefined;
       response = await this.scan(request, await this.token());
     }
@@ -112,31 +119,47 @@ export class ConsoleTransport {
     }
   }
 
-  /** Current access token, exchanging the API key when missing or near expiry. */
+  /** Current access token, refreshing the token pair when missing or near expiry. */
   private token(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt - TOKEN_SLACK_MS) {
       return Promise.resolve(this.accessToken);
     }
     // Deduplicate concurrent exchanges onto one in-flight request.
-    this.exchange ??= this.exchangeApiKey().finally(() => {
+    this.exchange ??= this.obtainToken().finally(() => {
       this.exchange = undefined;
     });
     return this.exchange;
   }
 
-  private async exchangeApiKey(): Promise<string> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}/api/v1/agent/token`, {
-        method: "POST",
-        headers: { "x-api-key": this.config.apiKey ?? "" },
-        signal: AbortSignal.timeout(this.config.timeoutMs),
-        dispatcher: await this.tlsDispatcher(),
-      } as RequestInit);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new GgateTransportError(`console unreachable (${this.baseUrl}): ${message}`);
+  private async obtainToken(): Promise<string> {
+    if (this.refreshToken) {
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) return refreshed;
     }
+    return this.exchangeApiKey();
+  }
+
+  /** Refresh rejection means the pair was revoked/expired; fall back to the configured API key. */
+  private async refreshAccessToken(): Promise<string | undefined> {
+    const response = await this.fetchToken("/api/v1/detection-engine/token/refresh", {
+      "content-type": "application/json",
+    }, JSON.stringify({ refresh_token: this.refreshToken }));
+    if (response.status === 401 || response.status === 403) {
+      this.refreshToken = undefined;
+      return undefined;
+    }
+    if (!response.ok) {
+      const body = (await response.text().catch(() => "")).slice(0, 300);
+      throw new GgateTransportError(`console token refresh failed: HTTP ${response.status}${body ? ` ${body}` : ""}`);
+    }
+    return this.acceptTokenPair(response, "refresh");
+  }
+
+  private async exchangeApiKey(): Promise<string> {
+    const response = await this.fetchToken(
+      "/api/v1/detection-engine/token",
+      { "x-api-key": this.config.apiKey ?? "" },
+    );
     if (response.status === 401 || response.status === 403) {
       throw new GgateTransportError(`console rejected the API key (token exchange HTTP ${response.status})`);
     }
@@ -145,11 +168,35 @@ export class ConsoleTransport {
       const detail = body ? ` ${body}` : "";
       throw new GgateTransportError(`console token exchange failed: HTTP ${response.status}${detail}`);
     }
-    const data = (await response.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };
+    return this.acceptTokenPair(response, "exchange");
+  }
+
+  private async fetchToken(path: string, headers: Record<string, string>, body?: string): Promise<Response> {
+    try {
+      return await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+        dispatcher: await this.tlsDispatcher(),
+      } as RequestInit);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new GgateTransportError(`console unreachable (${this.baseUrl}): ${message}`);
+    }
+  }
+
+  private async acceptTokenPair(response: Response, operation: string): Promise<string> {
+    const data = (await response.json().catch(() => ({}))) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
     if (!data.access_token) {
-      throw new GgateTransportError("console token exchange returned no access_token");
+      throw new GgateTransportError(`console token ${operation} returned no access_token`);
     }
     this.accessToken = data.access_token;
+    if (data.refresh_token) this.refreshToken = data.refresh_token;
     this.tokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
     return this.accessToken;
   }

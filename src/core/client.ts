@@ -13,11 +13,13 @@
  */
 
 import { Config } from "./config.js";
+import { attachmentFromPath } from "./attachment.js";
+import fs from "node:fs";
 import { ConsoleTransport, GgateTransportError, type TransportLike } from "./console-transport.js";
 import { decisionFromResponse, failOpenDecision, passDecision } from "./decision.js";
 import { RuntimeEventBuilder, SDK_VERSION } from "./event.js";
 import { DeliveryQueue } from "./queue.js";
-import { ConfigDefaults, Decision, ScanOptions } from "./types.js";
+import { ConfigDefaults, Decision, FileScanOptions, ScanOptions, ShellScanOptions, WebScanOptions } from "./types.js";
 
 export class GgateBlockedError extends Error {
   constructor(public readonly decision: Decision) {
@@ -137,6 +139,41 @@ export class Client {
     const decision = await this.sendOrQueue(event, redaction, Boolean(options.wait || options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
+  }
+
+  async scanShell(command: string, options: ShellScanOptions = {}): Promise<Decision> {
+    const { event, redaction } = this.builder.shell(command, options);
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
+    return decision;
+  }
+
+  async scanFile(filename: string, options: FileScanOptions = {}): Promise<Decision> {
+    let effective = options;
+    if (options.content === undefined && this.config.captureFileText && fs.existsSync(filename)) {
+      try {
+        const attachment = attachmentFromPath(filename, this.config, "file_ref");
+        effective = { ...options, content: attachment.text, content_len: attachment.size };
+      } catch {
+        // A path-only policy scan is still useful when the process cannot read the content.
+      }
+    }
+    const { event, redaction } = this.builder.file(filename, effective);
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
+    return decision;
+  }
+
+  async scanWeb(url: string, options: WebScanOptions = {}): Promise<Decision> {
+    const { event, redaction } = this.builder.web(url, options);
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
+    return decision;
+  }
+
+  /** Build an attachment for prompt/response scanning using the configured capture limit. */
+  attachmentFromPath(filename: string, source: "upload" | "paste" | "file_ref" | "generated" | "other" = "upload") {
+    return attachmentFromPath(filename, this.config, source);
   }
 
   /** Drain queued events. Resolves false when the deadline expired with events left. */

@@ -1,4 +1,7 @@
 export type Mode = "sync" | "async";
+export type Verdict = "system" | "pass" | "warn" | "block";
+export type Severity = "info" | "low" | "medium" | "high" | "critical";
+export type DetectionClass = "d0" | "d1" | "d2" | "d3" | "d4" | "d5" | "d6" | "d7" | "d8" | "d9";
 
 /** Which protection fired, mirroring the Rust `DetectionSummary`. Present on warn/block. */
 export interface DetectionSummary {
@@ -13,13 +16,82 @@ export interface DetectionSummary {
   other_sources?: number;
 }
 
+export interface FrameworkMappings {
+  asi?: string[];
+  llm?: string[];
+  atlas?: string[];
+  attack?: string[];
+  nist?: string[];
+}
+
+export interface MatchEvidence {
+  data_labels?: string[];
+  entities?: string[];
+  channel?: string;
+  rationale?: string;
+  hit_count?: number;
+  /** Versioned model-routing evidence; its nested schema is owned by the active model bundle. */
+  model_routing?: Record<string, unknown>;
+}
+
+export interface DetectorMatch {
+  detector_id: string;
+  category: string;
+  severity: Severity;
+  action: Verdict;
+  detection_class: DetectionClass;
+  confidence: number;
+  message: string;
+  owasp?: string[];
+  frameworks?: FrameworkMappings;
+  evidence?: MatchEvidence;
+  matched_text?: string;
+}
+
+export interface PolicySource {
+  name: string;
+  description?: string;
+}
+
+export interface TopicClassification {
+  label: string;
+  confidence: number;
+  runner_up?: string;
+  runner_up_confidence?: number;
+}
+
+export interface DocumentTaxonomy {
+  topic: TopicClassification;
+  content_types?: string[];
+  business_domains?: string[];
+  overall_confidence: number;
+}
+
+export interface SensitivityClassification {
+  severity: Severity;
+  sensitive_data_classes?: string[];
+  business_confidentiality_classes?: string[];
+  privacy_classes?: string[];
+  rights_and_restrictions?: string[];
+  required_handling?: string[];
+}
+
+/** Non-enforcement topic and sensitivity output returned beside the scan decision. */
+export interface DocumentIntelligence {
+  taxonomy: DocumentTaxonomy;
+  sensitivity: SensitivityClassification;
+  matched_text?: string;
+}
+
 export interface Decision {
-  verdict: "system" | "pass" | "warn" | "block" | "hard_block";
+  verdict: Verdict;
   reason_codes: string[];
   message: string;
-  matched_detectors: unknown[];
-  policy_source: unknown;
+  matched_detectors: DetectorMatch[];
+  policy_source: PolicySource | null;
   detection?: DetectionSummary;
+  /** Present on waited scans when rclassifier produced topic/sensitivity output. */
+  document_intelligence: DocumentIntelligence | null;
   fail_open: boolean;
   blocked: boolean;
   allowed: boolean;
@@ -61,16 +133,45 @@ export interface ScanOptions {
   source_detail?: unknown;
   attachments?: Attachment[];
   /** Response-only turn telemetry. */
+  thinking?: string;
+  thinking_len?: number;
+  thinking_redacted?: boolean;
   stop_reason?: string;
   usage?: TokenUsage;
   api_calls?: number;
   tool_calls?: number;
   duration_ms?: number;
+  subagent_type?: string;
   /** Tool-call/tool-result-only: MCP server + recognized external service. */
   server?: string;
   service?: string;
+  server_info?: Record<string, unknown>;
   /** Tool-result-only: which kind of tool produced the output. */
   kind?: "shell" | "file_read" | "web" | "mcp" | "other";
+  /** Tool-result-only execution metadata. `output_len` is needed only for truncated output. */
+  output_len?: number;
+  truncated?: boolean;
+  exit_code?: number;
+  ok?: boolean;
+}
+
+export interface ShellScanOptions extends ScanOptions {
+  argv?: string[];
+  enforce?: boolean;
+}
+
+export interface FileScanOptions extends ScanOptions {
+  action?: "read" | "write" | "edit" | "delete";
+  /** Transient text/patch sent for scanning; it is removed by the product retention pass. */
+  content?: string;
+  content_len?: number;
+  enforce?: boolean;
+}
+
+export interface WebScanOptions extends ScanOptions {
+  method?: string;
+  domain?: string;
+  enforce?: boolean;
 }
 
 /**
@@ -88,6 +189,8 @@ export interface ConfigDefaults {
   apiKey?: string;
   /** Skip TLS verification for the Console (dev only: accept a self-signed cert). */
   consoleInsecureTls?: boolean;
+  /** PEM CA certificate used to verify a Console signed by a private CA. */
+  consoleCaCert?: string;
   queueMax?: number;
   enabled?: boolean;
   orgId?: string;
@@ -96,6 +199,10 @@ export interface ConfigDefaults {
   collectorId?: string;
   labels?: Record<string, string>;
   redact?: boolean;
+  /** Capture attachment bytes/text for Console extraction and document classification. */
+  captureFileText?: boolean;
+  /** Maximum attachment bytes captured; the full file is still hashed. */
+  maxFileBytes?: number;
   /** Seconds to fail open instantly after a sync-scan transport failure. */
   cooldownSecs?: number;
   /** Default deadline for flush() in milliseconds. */

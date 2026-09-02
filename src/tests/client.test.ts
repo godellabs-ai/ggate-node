@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { instrumentOpenAI } from "../adapters/openai.js";
 import { instrumentAutoGen } from "../adapters/autogen.js";
@@ -123,6 +126,51 @@ test("decision parses the detection headline", async () => {
   assert.equal(decision.detection?.source, "sensitive_data");
 });
 
+test("waited scan returns document topic and sensitivity classification", async () => {
+  const transport = {
+    async request() {
+      return {
+        verdict: "pass",
+        message: "allowed",
+        document_intelligence: {
+          taxonomy: {
+            topic: { label: "INVESTOR_RELATIONS", confidence: 0.94 },
+            content_types: ["FINANCIAL_REPORT"],
+            business_domains: ["FINANCE"],
+            overall_confidence: 0.91,
+          },
+          sensitivity: {
+            severity: "high",
+            business_confidentiality_classes: ["material_non_public_information"],
+            required_handling: ["HUMAN_REVIEW_BEFORE_EXTERNAL_SEND"],
+          },
+          matched_text: "Quarterly guidance",
+        },
+      };
+    },
+  };
+  const client = new Client({ mode: "sync" }, transport as any);
+
+  const decision = await client.scanPrompt("Quarterly guidance");
+
+  assert.equal(decision.document_intelligence?.taxonomy.topic.label, "INVESTOR_RELATIONS");
+  assert.equal(decision.document_intelligence?.sensitivity.severity, "high");
+  assert.deepEqual(
+    decision.document_intelligence?.sensitivity.business_confidentiality_classes,
+    ["material_non_public_information"],
+  );
+});
+
+test("legacy hard_block is normalized to the current block verdict", async () => {
+  const client = new Client(
+    { mode: "sync" },
+    { async request() { return { verdict: "hard_block", message: "blocked" }; } } as any,
+  );
+  const decision = await client.scanPrompt("hello");
+  assert.equal(decision.verdict, "block");
+  assert.equal(decision.blocked, true);
+});
+
 test("breaker fails open without re-dialing after a transport failure", async () => {
   let calls = 0;
   const transport = {
@@ -209,6 +257,30 @@ test("redaction is off by default; an explicit choice wins", () => {
   assert.equal(forced.config.redact, true);
 });
 
+test("private CA trust cannot be combined with insecure TLS", () => {
+  assert.throws(
+    () => new Config({ consoleCaCert: "/tmp/console-ca.pem", consoleInsecureTls: true }),
+    /cannot be used together/,
+  );
+  assert.equal(new Config({ consoleCaCert: "/tmp/console-ca.pem" }).consoleCaCert, "/tmp/console-ca.pem");
+});
+
+test("attachmentFromPath hashes the full file and bounds captured content", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ggate-node-test-"));
+  const filename = path.join(directory, "report.txt");
+  try {
+    fs.writeFileSync(filename, "classified report");
+    const client = new Client({ enabled: false, captureFileText: true, maxFileBytes: 5 });
+    const attachment = client.attachmentFromPath(filename);
+    assert.equal(attachment.capture, "text");
+    assert.equal(attachment.text, "class");
+    assert.equal(attachment.truncated, true);
+    assert.match(attachment.sha256 || "", /^[a-f0-9]{64}$/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 /** Run `body` with GGATE_CONSOLE_URL/GGATE_API_KEY unset, then restore them. A developer
  * machine often exports a real key, which would otherwise decide these assertions. */
 function withoutConsoleEnv<T>(body: () => T): T {
@@ -277,6 +349,68 @@ test("console token exchange distinguishes gateway failures from rejected keys",
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("console uses canonical Detection Engine auth and refreshes the token pair", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.endsWith("/api/v1/detection-engine/token")) {
+      return Response.json({ access_token: "access-1", refresh_token: "refresh-1", expires_in: 1 });
+    }
+    if (url.endsWith("/api/v1/detection-engine/token/refresh")) {
+      return Response.json({ access_token: "access-2", refresh_token: "refresh-2", expires_in: 3600 });
+    }
+    return Response.json({ verdict: "pass", message: "allowed", document_intelligence: null });
+  };
+
+  try {
+    const transport = new ConsoleTransport(
+      new Config({ consoleUrl: "https://godels-gate.example.com", apiKey: "godel_test" }),
+    );
+    await transport.request({ op: "scan_text", event: {}, redaction: {} });
+    await transport.request({ op: "scan_text", event: {}, redaction: {} });
+    assert.equal(urls.filter((url) => url.endsWith("/api/v1/detection-engine/token")).length, 1);
+    assert.equal(urls.filter((url) => url.endsWith("/api/v1/detection-engine/token/refresh")).length, 1);
+    assert.equal(urls.some((url) => url.includes("/api/v1/agent/token")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("event builders carry current response, MCP, tool-result, and policy surfaces", async () => {
+  const transport = new FakeTransport();
+  const client = new Client({ mode: "sync" }, transport as any);
+
+  await client.scanResponse("done", {
+    wait: true,
+    thinking: "analysis",
+    thinking_redacted: false,
+    subagent_type: "Explore",
+  });
+  await client.scanToolCall("search", { q: "x" }, { server_info: { transport: "stdio" } });
+  await client.scanToolResult("bash", "failed", {
+    wait: true,
+    kind: "shell",
+    ok: false,
+    exit_code: 2,
+    output_len: 100,
+    truncated: true,
+    duration_ms: 50,
+  });
+  await client.scanShell("curl https://example.com", { argv: ["curl", "https://example.com"] });
+  await client.scanWeb("https://example.com/path", { method: "GET" });
+
+  const events = transport.requests.filter((request) => request.op === "scan_text").map((request) => request.event);
+  assert.equal(events[0].payload.thinking, "analysis");
+  assert.equal(events[0].payload.subagent_type, "Explore");
+  assert.deepEqual(events[1].payload.server_info, { transport: "stdio" });
+  assert.equal(events[2].payload.ok, false);
+  assert.equal(events[2].payload.exit_code, 2);
+  assert.equal(events[3].payload.surface, "shell");
+  assert.equal(events[4].payload.domain, "example.com");
 });
 
 test("OpenAI wrapper scans prompt and response", async () => {

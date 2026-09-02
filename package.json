@@ -1,6 +1,6 @@
 {
   "name": "@ggate/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Godel's Gate SDK for monitoring Node.js AI agent frameworks",
   "type": "module",
   "main": "dist/index.js",
@@ -11,7 +11,7 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist/adapters", "dist/core", "dist/index.js", "dist/index.d.ts", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test dist/tests/*.test.js",
@@ -26,8 +26,11 @@
   "engines": {
     "node": ">=18.17"
   },
+  "dependencies": {
+    "undici": "^8.10.1"
+  },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2"
   }
 }

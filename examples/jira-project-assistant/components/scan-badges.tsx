@@ -16,14 +16,12 @@ const VERDICT_STYLE: Record<string, string> = {
   pass: "text-emerald-700 bg-emerald-50 border-emerald-300 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900",
   warn: "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900",
   block: "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-950/40 dark:border-red-900",
-  hard_block: "text-rose-700 bg-rose-50 border-rose-300 ring-1 ring-rose-300 dark:text-rose-300 dark:bg-rose-950/40 dark:border-rose-900",
 };
 
 const DOT_STYLE: Record<string, string> = {
   pass: "bg-emerald-500",
   warn: "bg-amber-500",
   block: "bg-red-500",
-  hard_block: "bg-rose-500",
 };
 
 export function VerdictPill({ verdict, label }: { verdict: string; label?: string }) {
@@ -44,7 +42,7 @@ export function VerdictPill({ verdict, label }: { verdict: string; label?: strin
 export function ScanTrail({ scans }: { scans: ScanRecord[] }) {
   const [open, setOpen] = useState(false);
   if (!scans.length) return null;
-  const worst = scans.some((s) => s.verdict === "block" || s.verdict === "hard_block")
+  const worst = scans.some((s) => s.verdict === "block")
     ? "block"
     : scans.some((s) => s.verdict === "warn")
       ? "warn"

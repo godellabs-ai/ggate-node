@@ -29,7 +29,7 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
       await sdk.scanToolCall(tool?.name || "tool", input, { enforce: true, framework, request_id: runId });
     },
     async handleToolEnd(output: string, runId?: string) {
-      await sdk.scanToolResult("tool", String(output), { framework, request_id: runId });
+      await sdk.scanToolResult("tool", String(output), { enforce: true, framework, request_id: runId });
     },
   };
 }

@@ -41,7 +41,7 @@ function wrapFiles(files: any, sdk: Client, framework: string) {
   return {
     ...files,
     create: async (params: any, ...rest: any[]) => {
-      const attachment = fileAttachment(params?.file);
+      const attachment = fileAttachment(params?.file, sdk);
       await sdk.scanPrompt(`OpenAI file upload: ${attachment?.filename || "file"}`, {
         enforce: true,
         framework,
@@ -115,6 +115,7 @@ function wrapThreadRuns(runs: any, sdk: Client, framework: string) {
       ? async (threadId: string, runId: string, params: any, ...rest: any[]) => {
           for (const output of params?.tool_outputs || []) {
             await sdk.scanToolResult(output.tool_call_id || "tool", inputToText(output.output), {
+              enforce: true,
               framework,
               provider: "openai",
               conversation_id: threadId,
@@ -214,18 +215,12 @@ function responseToText(result: any): string {
   return "";
 }
 
-function fileAttachment(file: any) {
+function fileAttachment(file: any, sdk: Client) {
   const filename = typeof file === "string" ? file : file?.path || file?.name;
   if (!filename || !fs.existsSync(filename)) {
     return filename
       ? { filename: String(filename), source: "upload" as const, capture: "metadata_only" as const }
       : undefined;
   }
-  const stat = fs.statSync(filename);
-  return {
-    filename: String(filename).split(/[\\/]/).pop(),
-    size: stat.size,
-    source: "upload" as const,
-    capture: "metadata_only" as const,
-  };
+  return sdk.attachmentFromPath(filename, "upload");
 }

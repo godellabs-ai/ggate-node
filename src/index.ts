@@ -4,7 +4,7 @@ import { instrumentAutoGen } from "./adapters/autogen.js";
 import { llamaIndexCallback } from "./adapters/llamaindex.js";
 import { semanticKernelFilters } from "./adapters/semantic-kernel.js";
 import { Client } from "./core/client.js";
-import { ConfigOptions, ScanOptions } from "./core/types.js";
+import { ConfigOptions, FileScanOptions, ScanOptions, ShellScanOptions, WebScanOptions } from "./core/types.js";
 
 let client: Client | undefined;
 
@@ -68,6 +68,25 @@ export function scanToolResult(
   return getClient().scanToolResult(tool, output, options);
 }
 
+export function scanShell(command: string, options: ShellScanOptions = {}) {
+  return getClient().scanShell(command, options);
+}
+
+export function scanFile(filename: string, options: FileScanOptions = {}) {
+  return getClient().scanFile(filename, options);
+}
+
+export function scanWeb(url: string, options: WebScanOptions = {}) {
+  return getClient().scanWeb(url, options);
+}
+
+export function attachmentFromPath(
+  filename: string,
+  source: "upload" | "paste" | "file_ref" | "generated" | "other" = "upload",
+) {
+  return getClient().attachmentFromPath(filename, source);
+}
+
 /** Drain queued events. Resolves false when the deadline expired with events left. */
 export function flush(timeoutMs?: number): Promise<boolean> {
   return getClient().flush(timeoutMs);
@@ -80,4 +99,27 @@ export { instrumentOpenAI } from "./adapters/openai.js";
 export { langchainCallback } from "./adapters/langchain.js";
 export { llamaIndexCallback } from "./adapters/llamaindex.js";
 export { semanticKernelFilters } from "./adapters/semantic-kernel.js";
-export type { Attachment, ConfigDefaults, ConfigOptions, Decision, DetectionSummary, Mode, ScanOptions, TokenUsage } from "./core/types.js";
+export type {
+  Attachment,
+  ConfigDefaults,
+  ConfigOptions,
+  Decision,
+  DetectionClass,
+  DetectionSummary,
+  DetectorMatch,
+  DocumentIntelligence,
+  DocumentTaxonomy,
+  FileScanOptions,
+  FrameworkMappings,
+  MatchEvidence,
+  Mode,
+  PolicySource,
+  ScanOptions,
+  SensitivityClassification,
+  Severity,
+  ShellScanOptions,
+  TokenUsage,
+  TopicClassification,
+  Verdict,
+  WebScanOptions,
+} from "./core/types.js";

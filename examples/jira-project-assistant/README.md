@@ -21,9 +21,10 @@ protection that fired; every message carries an expandable trail of the scans it
 With `GGATE_CONSOLE_URL` + `GGATE_API_KEY` set, scans go to the Console's
 `POST /api/v1/scan` endpoint, which evaluates the detection rules + DLP + policy engine,
 records the event (visible in the Console's Activity view under the
-`agent-framework:langgraph` connector), and returns the verdict. The API key is
-exchanged once for a short-lived device JWT (`/api/v1/agent/token`), so per-scan auth
-is a stateless signature check — warm scans take ~50 ms. Nothing runs on the machine
+`agent-framework:langgraph` connector), and returns the verdict plus any document-intelligence
+classification. The API key is exchanged for a token pair at
+`/api/v1/detection-engine/token`; access tokens are rotated with the refresh endpoint, so
+per-scan auth is a stateless signature check. Nothing runs on the machine
 beside this app: the Console is the SDK's only dependency.
 
 **Deep scans (file/image OCR).** The Console runs the full pipeline for every scan — the SDK sends
@@ -32,8 +33,8 @@ intelligence, and records the verdict as usual. That is what lets an image's pix
 screenshot carrying a jailbreak, say) be caught rather than passed through as an opaque blob.
 
 There is no silent downgrade to a light text-only scan: if the Console cannot complete a scan,
-`POST /api/v1/scan` returns an error (503 / 502) rather than a weaker verdict — the SDK's own
-fail-open/closed policy then decides what to do on the client side.
+`POST /api/v1/scan` returns an error (503 / 502) rather than a weaker verdict; the SDK then follows
+its documented bounded fail-open behavior.
 
 ## Setup
 
