@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Example LangGraph agent guarded by the Godel's Gate SDK: a Jira assistant whose prompts, MCP tool traffic, and attachments are all scanned before reaching the user.",
+  "description": "Example LangGraph agent guarded by the Gödel Gate SDK: a Jira assistant whose prompts, MCP tool traffic, and attachments are all scanned before reaching the user.",
   "scripts": {
     "build:sdk": "npm --prefix ../.. install --ignore-scripts --no-audit --no-fund && npm --prefix ../.. run build",
     "predev": "npm run build:sdk",

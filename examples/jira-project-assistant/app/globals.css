@@ -4,7 +4,7 @@
 @variant dark (&:where(.dark, .dark *));
 
 /*
- * Gödel's Gate console theme.
+ * Gödel Gate console theme.
  * Soft, professional purple-blue surfaces (subtle borders + shadow-sm), light & dark.
  * The primary purple (hue 284) is shared across the whole product suite.
  */

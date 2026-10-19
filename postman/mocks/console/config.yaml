@@ -1,0 +1,8 @@
+version: 1
+name: Gate Console scan contract
+port: 4918
+interceptRequests: true
+scenarios:
+  - name: default
+    default: true
+    path: default.js

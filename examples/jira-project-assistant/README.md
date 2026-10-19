@@ -1,7 +1,7 @@
 # Jira Project Assistant
 
-An example **LangGraph (Node.js)** agent guarded end-to-end by the **Godel's Gate SDK**.
-A chat UI (styled like the Gödel's Gate console) answers questions such as
+An example **LangGraph (Node.js)** agent guarded end-to-end by the **Gödel Gate SDK**.
+A chat UI (styled like the Gödel Gate console) answers questions such as
 *"Describe the ticket ECS-55"* or *"Show all in progress tasks"* by driving OpenAI GPT
 with **Atlassian Jira MCP** tools — and every piece of content on the way is scanned:
 
@@ -13,7 +13,7 @@ with **Atlassian Jira MCP** tools — and every piece of content on the way is s
 | Every Jira **attachment** on a returned ticket (content fetched via Jira REST) | after the tool result | chat turn aborted |
 | Final assistant answer | before the UI shows it | chat turn aborted |
 
-Blocks surface in the chat as a red "Chat blocked by Gödel's Gate" card naming the
+Blocks surface in the chat as a red "Chat blocked by Gödel Gate" card naming the
 protection that fired; every message carries an expandable trail of the scans it went through.
 
 ## How scanning works here
@@ -40,7 +40,7 @@ its documented bounded fail-open behavior.
 
 ### 1. Console
 
-Point the example at a Godel's Gate Console (`https://godels-gate.example.com`, or
+Point the example at a Gödel Gate Console (`https://godel-gate.example.com`, or
 `https://localhost` for a locally running one).
 
 Create an API key: Console UI → **Admin → API keys** (or `POST /api/v1/api-keys` with an

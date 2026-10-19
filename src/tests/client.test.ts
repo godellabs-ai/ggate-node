@@ -245,11 +245,11 @@ test("identity is required, and an explicit value beats the environment", () => 
 
 test("redaction is off by default; an explicit choice wins", () => {
   // The Console is the detection engine; masking client-side would hide what it exists to catch.
-  const dflt = new Client({ consoleUrl: "https://godels-gate.example.com", apiKey: "godel_x", enabled: false });
+  const dflt = new Client({ consoleUrl: "https://godel-gate.example.com", apiKey: "godel_x", enabled: false });
   assert.equal(dflt.config.redact, false);
 
   const forced = new Client({
-    consoleUrl: "https://godels-gate.example.com",
+    consoleUrl: "https://godel-gate.example.com",
     apiKey: "godel_x",
     redact: true,
     enabled: false,
@@ -297,7 +297,7 @@ function withoutConsoleEnv<T>(body: () => T): T {
 
 test("the Console is the only destination", () => {
   const configured = new Client({
-    consoleUrl: "https://godels-gate.example.com",
+    consoleUrl: "https://godel-gate.example.com",
     apiKey: "godel_x",
     enabled: false,
   });
@@ -305,7 +305,7 @@ test("the Console is the only destination", () => {
 
   // A URL without a key (or the reverse) is not a usable Console.
   withoutConsoleEnv(() => {
-    assert.equal(new Client({ consoleUrl: "https://godels-gate.example.com", enabled: false }).config.configured, false);
+    assert.equal(new Client({ consoleUrl: "https://godel-gate.example.com", enabled: false }).config.configured, false);
     assert.equal(new Client({ apiKey: "godel_x", enabled: false }).config.configured, false);
     assert.equal(new Client({ enabled: false }).config.configured, false);
   });
@@ -338,7 +338,7 @@ test("console token exchange distinguishes gateway failures from rejected keys",
   try {
     const transport = new ConsoleTransport(
       new Config({
-        consoleUrl: "https://godels-gate.example.com",
+        consoleUrl: "https://godel-gate.example.com",
         apiKey: "godel_test",
       }),
     );
@@ -368,7 +368,7 @@ test("console uses canonical Detection Engine auth and refreshes the token pair"
 
   try {
     const transport = new ConsoleTransport(
-      new Config({ consoleUrl: "https://godels-gate.example.com", apiKey: "godel_test" }),
+      new Config({ consoleUrl: "https://godel-gate.example.com", apiKey: "godel_test" }),
     );
     await transport.request({ op: "scan_text", event: {}, redaction: {} });
     await transport.request({ op: "scan_text", event: {}, redaction: {} });

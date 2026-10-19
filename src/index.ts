@@ -101,6 +101,7 @@ export { llamaIndexCallback } from "./adapters/llamaindex.js";
 export { semanticKernelFilters } from "./adapters/semantic-kernel.js";
 export type {
   Attachment,
+  ClassificationLabel,
   ConfigDefaults,
   ConfigOptions,
   Decision,
@@ -110,16 +111,20 @@ export type {
   DocumentIntelligence,
   DocumentTaxonomy,
   FileScanOptions,
+  FileClassification,
   FrameworkMappings,
   MatchEvidence,
   Mode,
   PolicySource,
+  PipelineIssue,
+  PipelineStatus,
   ScanOptions,
   SensitivityClassification,
   Severity,
   ShellScanOptions,
   TokenUsage,
   TopicClassification,
+  TopicResolution,
   Verdict,
   WebScanOptions,
 } from "./core/types.js";

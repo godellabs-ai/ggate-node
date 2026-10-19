@@ -1,0 +1,5 @@
+simulation: gate-sdk-scan-contract
+routing: path
+mocks:
+  - routeKey: console
+    path: ../mocks/console/config.yaml

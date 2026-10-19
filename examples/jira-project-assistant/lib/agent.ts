@@ -1,6 +1,6 @@
 /**
  * The LangGraph agent: OpenAI GPT + Atlassian Jira MCP tools, with every tool
- * call and tool result routed through Godel's Gate before the model or the user
+ * call and tool result routed through Gödel Gate before the model or the user
  * sees it. A block verdict aborts the whole run via the turn's AbortSignal.
  */
 

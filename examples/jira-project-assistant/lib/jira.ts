@@ -4,7 +4,7 @@
  * MCP tool results only reference attachments (filename + content URL); the
  * bytes never flow through the MCP server. When a ticket carries attachments,
  * we fetch them directly from Jira's REST API with the same credentials the
- * MCP server uses, and hand the original bytes to Godel's Gate. The agent then
+ * MCP server uses, and hand the original bytes to Gödel Gate. The agent then
  * owns text extraction/OCR for every file type (an image's pixel-text, e.g. a
  * screenshot, is invisible unless the bytes are sent).
  */
@@ -27,7 +27,7 @@ export interface JiraAttachment {
   contentUrl: string;
 }
 
-/** One fetched attachment, ready to hand to Godel's Gate as raw bytes for extraction/OCR. */
+/** One fetched attachment, ready to hand to Gödel Gate as raw bytes for extraction/OCR. */
 export interface FetchedAttachment {
   filename: string;
   mimeType: string;

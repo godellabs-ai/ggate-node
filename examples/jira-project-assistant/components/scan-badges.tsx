@@ -38,7 +38,7 @@ export function VerdictPill({ verdict, label }: { verdict: string; label?: strin
   );
 }
 
-/** Collapsible per-message trail of everything Godel's Gate scanned. */
+/** Collapsible per-message trail of everything Gödel Gate scanned. */
 export function ScanTrail({ scans }: { scans: ScanRecord[] }) {
   const [open, setOpen] = useState(false);
   if (!scans.length) return null;

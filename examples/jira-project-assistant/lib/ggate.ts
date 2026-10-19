@@ -1,5 +1,5 @@
 /**
- * Godel's Gate integration.
+ * Gödel Gate integration.
  *
  * Every piece of content that flows through the assistant — the user's prompt,
  * each MCP tool call, each tool result, every Jira attachment, and the final
@@ -55,11 +55,11 @@ export interface ScanRecord {
   failOpen: boolean;
 }
 
-/** Thrown when Godel's Gate blocks the turn; carries the scan that tripped. */
+/** Thrown when Gödel Gate blocks the turn; carries the scan that tripped. */
 export class ChatBlockedError extends Error {
   constructor(public readonly scan: ScanRecord) {
     super(
-      scan.detection ? `${scan.detection.detail}` : "blocked by Godel's Gate",
+      scan.detection ? `${scan.detection.detail}` : "blocked by Gödel Gate",
     );
     this.name = "ChatBlockedError";
   }

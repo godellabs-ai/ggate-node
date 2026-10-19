@@ -56,6 +56,7 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
     policy_source: response.policy_source ?? null,
     detection: response.detection ?? undefined,
     document_intelligence: response.document_intelligence ?? null,
+    ...(response.pipeline_status != null ? { pipeline_status: response.pipeline_status } : {}),
     fail_open: Boolean(response.fail_open),
     blocked: verdict === "block",
     allowed: ["pass", "warn", "system"].includes(verdict),

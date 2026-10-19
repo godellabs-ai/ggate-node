@@ -58,6 +58,49 @@ export interface TopicClassification {
   confidence: number;
   runner_up?: string;
   runner_up_confidence?: number;
+  resolution?: TopicResolution;
+}
+
+export interface TopicResolution {
+  method: string;
+  uncertain: boolean;
+  reason: string;
+  evidence_ids?: string[];
+  raw_label: string;
+  raw_confidence: number;
+  raw_runner_up: string;
+  raw_runner_up_confidence: number;
+}
+
+export interface ClassificationLabel {
+  key: string;
+  provider: string;
+  account_id?: string;
+  account_name?: string;
+  kind: string;
+  external_id: string;
+  display_name: string;
+  group_name: string;
+  active: boolean;
+}
+
+export interface FileClassification {
+  status: string;
+  labels: ClassificationLabel[];
+  gate_sensitivity_available?: boolean;
+}
+
+export interface PipelineIssue {
+  code: string;
+  message: string;
+}
+
+/** Scan coverage and media evidence; these do not change the security verdict. */
+export interface PipelineStatus {
+  errors?: PipelineIssue[];
+  warnings?: PipelineIssue[];
+  media?: Record<string, unknown>[];
+  visual_codes?: Record<string, unknown>[];
 }
 
 export interface DocumentTaxonomy {
@@ -76,8 +119,9 @@ export interface SensitivityClassification {
   required_handling?: string[];
 }
 
-/** Non-enforcement topic and sensitivity output returned beside the scan decision. */
+/** Document classification context returned beside the scan decision. */
 export interface DocumentIntelligence {
+  file_classification?: FileClassification;
   taxonomy: DocumentTaxonomy;
   sensitivity: SensitivityClassification;
   matched_text?: string;
@@ -90,8 +134,10 @@ export interface Decision {
   matched_detectors: DetectorMatch[];
   policy_source: PolicySource | null;
   detection?: DetectionSummary;
-  /** Present on waited scans when rclassifier produced topic/sensitivity output. */
+  /** Present on waited scans when the Console produced document classification. */
   document_intelligence: DocumentIntelligence | null;
+  /** Absent when the Console reports no pipeline issues or media evidence. */
+  pipeline_status?: PipelineStatus;
   fail_open: boolean;
   blocked: boolean;
   allowed: boolean;
@@ -182,7 +228,7 @@ export interface WebScanOptions extends ScanOptions {
 export interface ConfigDefaults {
   mode?: Mode;
   timeoutMs?: number;
-  /** Console base URL (e.g. https://godels-gate.example.com). Required, with apiKey — it is
+  /** Console base URL (e.g. https://godel-gate.example.com). Required, with apiKey — it is
    * where every scan goes. */
   consoleUrl?: string;
   /** IAM API key for the Console scan API (Console UI -> Admin -> API keys). Required. */

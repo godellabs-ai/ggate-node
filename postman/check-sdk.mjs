@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { Client } from "../dist/index.js";
+const client = new Client({ agentName: "Contract test", team: "SDK validation", consoleUrl: "http://127.0.0.1:4918/console", apiKey: "local-test-only" });
+const decision = await client.scanPrompt("Harmless fixture request");
+assert.equal(decision.verdict, "pass");
+assert.equal(decision.fail_open, false);
+assert.equal(decision.pipeline_status.errors[0].code, "attachment_scan_incomplete");
+assert.equal(decision.document_intelligence.file_classification.status, "unavailable");
+assert.equal(decision.document_intelligence.taxonomy.topic.resolution.uncertain, true);
+assert.equal(await client.flush(), true);
+console.log("Node SDK HTTP contract smoke passed");

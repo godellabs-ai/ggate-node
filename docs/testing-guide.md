@@ -29,13 +29,13 @@ Prerequisites:
 npm install
 npm run build
 GGATE_MODE=sync \
-GGATE_CONSOLE_URL=https://godels-gate.example.com \
+GGATE_CONSOLE_URL=https://godel-gate.example.com \
 GGATE_API_KEY=godel_... \
   node --input-type=module - <<'JS'
 import { init, scanPrompt } from "./dist/index.js";
 
 init({ agentName: "Smoke Test", team: "Platform Engineering", mode: "sync" });
-const decision = await scanPrompt("Godel's Gate SDK smoke test", {
+const decision = await scanPrompt("Gödel Gate SDK smoke test", {
   framework: "manual",
   model: "test",
 });
@@ -89,7 +89,7 @@ adapters.
 ## 5. Edge Cases To Verify Before Release
 
 - Console unreachable or unconfigured: SDK returns fail-open pass and the app still works.
-- Console slow: sync timeout is bounded by `GGATE_TIMEOUT_MS`; async mode does not block.
+- Console slow: `GGATE_TIMEOUT_MS` applies per HTTP request (per socket operation in Python); token work and retries can extend a whole scan. Queued calls do not wait; explicit response/tool-result waits still do.
 - Expired access token: the SDK refreshes its pair; rejected refresh/API key fails open rather than throwing.
 - Queue overflow: async queue drops oldest events and does not grow unbounded.
 - Blocked prompt: provider call is not made.
@@ -120,3 +120,30 @@ With the Console stack running:
 - Stub-Console HTTP integration test.
 - Real-Console e2e test against a running deployment.
 - Console e2e test that verifies events reach Activity.
+
+## Local Console contract check
+
+The mock in `postman/mocks/console` follows Gate's checked-out `ScanTextResponse` and token
+exchange models. It is a local fixture for our own API, not a published vendor mock. It returns
+a pass with incomplete attachment coverage, topic-resolution metadata, and unavailable file
+classification so both SDKs must preserve those fields without turning them into a block.
+It does not execute Gate's detector pipeline or validate live credentials.
+
+From the Node SDK checkout, start it in one terminal:
+
+```bash
+postman simulation run postman/simulations/console.sim.yaml --port 4918 --output ndjson
+```
+
+In another terminal, from the same checkout:
+
+```bash
+npm run build
+node postman/check-sdk.mjs
+# If the Python SDK checkout is alongside this repository:
+PYTHONPATH=../ggate-python/src python3 postman/check-python.py
+```
+
+Confirm the simulation log contains token exchange and scan requests for both clients. Stop
+that simulation with Ctrl-C after the check. Unit tests also cover absent metadata from older
+Consoles and preserving coverage metadata on both pass and block decisions.

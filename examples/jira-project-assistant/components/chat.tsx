@@ -90,7 +90,7 @@ export function Chat() {
             <h1 className="text-lg font-bold tracking-tight md:text-xl">Jira Project Assistant</h1>
             <p className="text-xs text-muted-foreground">
               Every prompt, tool call, and attachment scanned by{" "}
-              <span className="font-semibold text-primary">Gödel&apos;s Gate</span>
+              <span className="font-semibold text-primary">Gödel Gate</span>
             </p>
           </div>
         </div>
@@ -196,7 +196,7 @@ function BlockedCard({ blocked }: { blocked: BlockedInfo }) {
       <div className="flex items-center gap-2">
         <ShieldX className="size-4 text-red-600 dark:text-red-400" />
         <span className="text-sm font-bold text-red-700 dark:text-red-300">
-          Chat blocked by Gödel&apos;s Gate
+          Chat blocked by Gödel Gate
         </span>
         <VerdictPill verdict="block" />
       </div>

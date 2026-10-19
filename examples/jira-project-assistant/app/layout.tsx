@@ -5,9 +5,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Jira Project Assistant — Gödel's Gate",
+  title: "Jira Project Assistant — Gödel Gate",
   description:
-    "Example LangGraph agent whose prompts, Jira MCP traffic, and attachments are scanned by Gödel's Gate.",
+    "Example LangGraph agent whose prompts, Jira MCP traffic, and attachments are scanned by Gödel Gate.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

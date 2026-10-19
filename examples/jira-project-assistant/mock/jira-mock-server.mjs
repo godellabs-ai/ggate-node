@@ -5,7 +5,7 @@
  * http://127.0.0.1:3011 so the attachment-scanning path is exercised for real.
  *
  * Tickets: ECS-55 (clean — the happy path), ECS-99 carries an attachment with
- * leaked credentials, so "Describe the ticket ECS-99" demonstrates Godel's Gate
+ * leaked credentials, so "Describe the ticket ECS-99" demonstrates Gödel Gate
  * blocking the chat.
  *
  * Use via .env:  JIRA_MCP_COMMAND=node  JIRA_MCP_ARGS=["mock/jira-mock-server.mjs"]
