@@ -41,7 +41,7 @@ function ggateHome(): string {
 function readConfigScalar(name: string): string | undefined {
   try {
     const file = expandHome(process.env.GGATE_CONFIG || "") || path.join(ggateHome(), "config.yaml");
-    for (const rawLine of fs.readFileSync(file, "utf8").split("\n")) {
+    for (const rawLine of fs.readFileSync(/* turbopackIgnore: true */ file, "utf8").split("\n")) {
       const line = rawLine.split("#", 1)[0];
       const idx = line.indexOf(":");
       if (idx < 0) continue;

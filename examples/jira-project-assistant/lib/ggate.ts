@@ -136,6 +136,7 @@ export class TurnGuard {
   ): Promise<void> {
     const decision = await ggate().scanToolResult(tool, output, {
       wait: true,
+      before_delivery: true,
       kind: "mcp",
       framework: FRAMEWORK,
       server: "jira",
@@ -173,6 +174,7 @@ export class TurnGuard {
     // screenshot with an embedded jailbreak) be OCR'd and caught; the UI still labels this an attachment.
     const decision = await ggate().scanResponse("", {
       wait: true,
+      before_delivery: true,
       framework: FRAMEWORK,
       session_id: sessionId,
       attachments: [attachment],
@@ -183,6 +185,7 @@ export class TurnGuard {
   async scanResponse(text: string, sessionId: string): Promise<void> {
     const decision = await ggate().scanResponse(text, {
       wait: true,
+      before_delivery: true,
       framework: FRAMEWORK,
       session_id: sessionId,
     });

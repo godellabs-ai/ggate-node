@@ -109,14 +109,17 @@ export class Client {
 
   async scanPrompt(text: string, options: ScanOptions & { enforce?: boolean } = {}): Promise<Decision> {
     const { event, redaction } = this.builder.prompt(text, options);
-    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync" || Boolean(options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }
 
-  async scanResponse(text: string, options: ScanOptions & { wait?: boolean } = {}): Promise<Decision> {
+  async scanResponse(text: string, options: ScanOptions & { wait?: boolean; enforce?: boolean } = {}): Promise<Decision> {
+    if (options.enforce) options = { ...options, before_delivery: true };
     const { event, redaction } = this.builder.response(text, options);
-    return this.sendOrQueue(event, redaction, Boolean(options.wait));
+    const decision = await this.sendOrQueue(event, redaction, Boolean(options.wait || options.before_delivery));
+    if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
+    return decision;
   }
 
   async scanToolCall(
@@ -125,7 +128,7 @@ export class Client {
     options: ScanOptions & { enforce?: boolean } = {},
   ): Promise<Decision> {
     const { event, redaction } = this.builder.toolCall(tool, inputSummary, options);
-    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync" || Boolean(options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }
@@ -135,15 +138,16 @@ export class Client {
     output: string,
     options: ScanOptions & { wait?: boolean; enforce?: boolean } = {},
   ): Promise<Decision> {
+    if (options.enforce) options = { ...options, before_delivery: true };
     const { event, redaction } = this.builder.toolResult(tool, output, options);
-    const decision = await this.sendOrQueue(event, redaction, Boolean(options.wait || options.enforce));
+    const decision = await this.sendOrQueue(event, redaction, Boolean(options.wait || options.enforce || options.before_delivery));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }
 
   async scanShell(command: string, options: ShellScanOptions = {}): Promise<Decision> {
     const { event, redaction } = this.builder.shell(command, options);
-    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync" || Boolean(options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }
@@ -159,14 +163,14 @@ export class Client {
       }
     }
     const { event, redaction } = this.builder.file(filename, effective);
-    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync" || Boolean(options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }
 
   async scanWeb(url: string, options: WebScanOptions = {}): Promise<Decision> {
     const { event, redaction } = this.builder.web(url, options);
-    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync");
+    const decision = await this.sendOrQueue(event, redaction, this.config.mode === "sync" || Boolean(options.enforce));
     if (options.enforce && decision.blocked) throw new GgateBlockedError(decision);
     return decision;
   }

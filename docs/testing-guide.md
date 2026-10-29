@@ -147,3 +147,12 @@ PYTHONPATH=../ggate-python/src python3 postman/check-python.py
 Confirm the simulation log contains token exchange and scan requests for both clients. Stop
 that simulation with Ctrl-C after the check. Unit tests also cover absent metadata from older
 Consoles and preserving coverage metadata on both pass and block decisions.
+
+## Microsoft 365 integration tests
+
+The test suite uses the installed Microsoft Agents SDK TurnContext, exercising blocked inbound
+messages, outgoing sends, batch atomicity, and message updates. The transport is simulated, so
+these tests do not validate a live Microsoft tenant or Gate detector configuration.
+
+In 0.2.1, `enforce` always waits, including when the default mode is audit. For responses and
+tool results it also declares a pre-delivery boundary. A plain waited audit remains `post`.

@@ -26,7 +26,7 @@ export function semanticKernelFilters(options: { framework?: string; sdkClient?:
       }
       await next();
       const output = textify(context?.result);
-      if (output) await sdk.scanToolResult(name, output, { enforce: true, framework });
+      if (output) await sdk.scanToolResult(name, output, { enforce: sdk.config.mode === "sync", framework });
     },
   };
 }

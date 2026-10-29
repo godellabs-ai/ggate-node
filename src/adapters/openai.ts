@@ -25,7 +25,7 @@ export function instrumentOpenAI<T extends object>(
       }
       if (prop === "run" && typeof (target as any).run === "function") {
         return async (...args: any[]) => {
-          await sdk.scanPrompt(textify(args), { enforce: true, framework, provider: "openai" });
+          await sdk.scanPrompt(textify(args), { enforce: sdk.config.mode === "sync", framework, provider: "openai" });
           const result = await (target as any).run(...args);
           const text = responseToText(result) || textify(result);
           if (text) await sdk.scanResponse(text, { framework, provider: "openai" });
@@ -43,7 +43,7 @@ function wrapFiles(files: any, sdk: Client, framework: string) {
     create: async (params: any, ...rest: any[]) => {
       const attachment = fileAttachment(params?.file, sdk);
       await sdk.scanPrompt(`OpenAI file upload: ${attachment?.filename || "file"}`, {
-        enforce: true,
+        enforce: sdk.config.mode === "sync",
         framework,
         provider: "openai",
         attachments: attachment ? [attachment] : [],
@@ -77,7 +77,7 @@ function wrapThreadMessages(messages: any, sdk: Client, framework: string) {
     ...messages,
     create: async (threadId: string, params: any, ...rest: any[]) => {
       await sdk.scanPrompt(inputToText(params?.content), {
-        enforce: true,
+        enforce: sdk.config.mode === "sync",
         framework,
         provider: "openai",
         conversation_id: threadId,
@@ -105,7 +105,7 @@ function wrapThreadRuns(runs: any, sdk: Client, framework: string) {
     ...runs,
     create: async (threadId: string, params: any, ...rest: any[]) => {
       const prompt = inputToText(params?.additional_messages) || inputToText(params?.instructions);
-      if (prompt) await sdk.scanPrompt(prompt, { enforce: true, framework, provider: "openai", conversation_id: threadId });
+      if (prompt) await sdk.scanPrompt(prompt, { enforce: sdk.config.mode === "sync", framework, provider: "openai", conversation_id: threadId });
       const result = await runs.create(threadId, params, ...rest);
       const text = responseToText(result) || textify(result);
       if (text) await sdk.scanResponse(text, { framework, provider: "openai", conversation_id: threadId });
@@ -115,7 +115,7 @@ function wrapThreadRuns(runs: any, sdk: Client, framework: string) {
       ? async (threadId: string, runId: string, params: any, ...rest: any[]) => {
           for (const output of params?.tool_outputs || []) {
             await sdk.scanToolResult(output.tool_call_id || "tool", inputToText(output.output), {
-              enforce: true,
+              enforce: sdk.config.mode === "sync",
               framework,
               provider: "openai",
               conversation_id: threadId,
@@ -136,7 +136,7 @@ function wrapChat(chat: any, sdk: Client, framework: string) {
       create: async (params: any, ...rest: any[]) => {
         const prompt = messagesToText(params?.messages || []);
         await sdk.scanPrompt(prompt, {
-          enforce: true,
+          enforce: sdk.config.mode === "sync",
           framework,
           provider: "openai",
           model: params?.model,
@@ -157,7 +157,7 @@ function wrapResponses(responses: any, sdk: Client, framework: string) {
     ...responses,
     create: async (params: any, ...rest: any[]) => {
       await sdk.scanPrompt(inputToText(params?.input), {
-        enforce: true,
+        enforce: sdk.config.mode === "sync",
         framework,
         provider: "openai",
         model: params?.model,

@@ -14,8 +14,38 @@ The Python SDK is [godellabs-ai/ggate-python](https://github.com/godellabs-ai/gg
 
 ## Release compatibility
 
-This SDK release is **0.2.0**, aligned with Gödel Gate Console **0.2.0**.
+This SDK release is **0.2.1**, aligned with Gödel Gate Console **0.2.1**.
 Use SDK **0.2.y** with Console **0.2.x**; SDK patch releases may advance independently.
+
+### Microsoft 365 Agents SDK
+
+```ts
+import { init, instrument } from "@ggate/sdk";
+
+const gate = init({ agentName: "Microsoft 365 Assistant", team: "Platform Engineering", mode: "sync" });
+// adapter is your existing Microsoft Agents CloudAdapter.
+const middleware = instrument("microsoft-365-agents", { adapter, sdkClient: gate });
+```
+
+The middleware checks incoming content and outgoing sends/updates through public TurnContext
+hooks, including inline cards and invoke values. It throws `GgateBlockedError` before continuing
+a blocked operation. Catch it at your application's error boundary without echoing blocked content.
+No Microsoft package is loaded by Gate itself; the host application supplies its Agents SDK.
+
+Model calls and tools inside handlers still require their own adapter or explicit scans. Use
+`middleware.metadata(context)` as scan options to correlate these calls with the same conversation.
+Remote attachments are metadata-only, and Microsoft-managed internal execution is not visible.
+
+### Changes in 0.2.1
+
+- `enforce: true` always waits, even when the default mode is `async`.
+- `scanResponse` and `scanToolResult` accept `enforce: true`: content is checked before delivery,
+  with `phase: "pre"`, and a block throws. Call these before releasing the content.
+- `before_delivery: true` waits and declares the same boundary but returns the verdict for the
+  caller to handle. `wait: true` alone remains a `post` audit scan.
+- Decisions preserve Gate's `media_gate`, and scan options accept explicit `source_trust`.
+- The [Jira example](examples/jira-project-assistant/README.md) uses delivery preflights for tool
+  results, attachments, and the final answer, with refreshed dependencies and lockfile.
 
 ## Install
 
@@ -137,7 +167,7 @@ Transport failures fail open; missing agent identity and explicit block enforcem
   queued by default; pass `wait: true` to receive classification, or `enforce: true` for a
   block-capable tool-result boundary.
 - **Async mode** (`init({ mode: "async" })`) queues preflight scans and returns an immediate local
-  pass. Explicit `wait` on response/tool-result scans and `enforce` on tool-result scans still wait
+  pass. Explicit `wait` on response/tool-result scans and all `enforce` calls still wait
   for the Console in either mode.
 - **Fail open**: any problem reaching the Console (unreachable, restarting, slow, rejected key,
   unconfigured) yields an allow decision with `fail_open: true`. After a failure the SDK fails

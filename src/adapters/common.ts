@@ -57,7 +57,7 @@ export function wrapRunMethods<T extends object>(
       if (typeof prop !== "string" || !methods.includes(prop) || typeof value !== "function") return value;
       return async (...args: any[]) => {
         const prompt = textify(args);
-        if (prompt) await sdk.scanPrompt(prompt, { enforce: true, framework });
+        if (prompt) await sdk.scanPrompt(prompt, { enforce: sdk.config.mode === "sync", framework });
         const result = await value.apply(raw, args);
         const response = textify(result);
         if (response) await sdk.scanResponse(response, { framework });

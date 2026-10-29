@@ -25,7 +25,7 @@ import { Config } from "./config.js";
 import { RedactionSummary, redactText, sha256Hex } from "./redactor.js";
 import { Attachment, FileScanOptions, ScanOptions, ShellScanOptions, TokenUsage, WebScanOptions } from "./types.js";
 
-export const SDK_VERSION = "0.2.0";
+export const SDK_VERSION = "0.2.1";
 
 // Normalized to the Rust `std::env::consts` vocabulary the rest of the fleet reports
 // (platform_os is a Console dimension, so casing must match the hook collectors).
@@ -70,7 +70,7 @@ export class RuntimeEventBuilder {
       subagent_type: options.subagent_type,
       attachments: options.attachments || [],
     };
-    return this.event("post", payload, text, options);
+    return this.event(options.before_delivery ? "pre" : "post", payload, text, options);
   }
 
   toolCall(tool: string, inputSummary: unknown, options: ScanOptions = {}) {
@@ -93,7 +93,7 @@ export class RuntimeEventBuilder {
 
   toolResult(tool: string, output: string, options: ScanOptions = {}) {
     return this.event(
-      "post",
+      options.before_delivery ? "pre" : "post",
       {
         surface: "tool_result",
         kind: options.kind && TOOL_RESULT_KINDS.has(options.kind) ? options.kind : "other",
@@ -179,6 +179,7 @@ export class RuntimeEventBuilder {
           correlation_id: options.correlation_id,
           parent_event_id: options.parent_event_id,
           repo: options.repo,
+          source_trust: options.source_trust,
           permission_mode: options.permission_mode,
         }),
         payload: clean(payload),

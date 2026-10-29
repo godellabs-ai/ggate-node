@@ -57,6 +57,7 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
     detection: response.detection ?? undefined,
     document_intelligence: response.document_intelligence ?? null,
     ...(response.pipeline_status != null ? { pipeline_status: response.pipeline_status } : {}),
+    ...(response.media_gate != null ? { media_gate: response.media_gate } : {}),
     fail_open: Boolean(response.fail_open),
     blocked: verdict === "block",
     allowed: ["pass", "warn", "system"].includes(verdict),

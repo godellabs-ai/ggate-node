@@ -138,6 +138,8 @@ export interface Decision {
   document_intelligence: DocumentIntelligence | null;
   /** Absent when the Console reports no pipeline issues or media evidence. */
   pipeline_status?: PipelineStatus;
+  /** Media policy decision returned by Gate 0.2.1. */
+  media_gate?: Record<string, unknown>;
   fail_open: boolean;
   blocked: boolean;
   allowed: boolean;
@@ -166,6 +168,9 @@ export interface TokenUsage {
 }
 
 export interface ScanOptions {
+  /** Content is still withheld from its recipient. Makes response/result scans enforceable. */
+  before_delivery?: boolean;
+  source_trust?: "PUBLIC_OPEN_SOURCE_REPOSITORY" | "INTERNAL_MANAGED_REPOSITORY";
   framework?: string;
   provider?: string;
   model?: string;

@@ -9,14 +9,14 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
     name: "ggate",
     async handleLLMStart(_llm: unknown, prompts: string[], runId?: string) {
       await sdk.scanPrompt((prompts || []).join("\n"), {
-        enforce: true,
+        enforce: sdk.config.mode === "sync",
         framework,
         request_id: runId,
       });
     },
     async handleChatModelStart(_llm: unknown, messages: any[][], runId?: string) {
       await sdk.scanPrompt(messagesToText(messages), {
-        enforce: true,
+        enforce: sdk.config.mode === "sync",
         framework,
         request_id: runId,
       });
@@ -26,10 +26,10 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
       if (text) await sdk.scanResponse(text, { framework, request_id: runId });
     },
     async handleToolStart(tool: any, input: string, runId?: string) {
-      await sdk.scanToolCall(tool?.name || "tool", input, { enforce: true, framework, request_id: runId });
+      await sdk.scanToolCall(tool?.name || "tool", input, { enforce: sdk.config.mode === "sync", framework, request_id: runId });
     },
     async handleToolEnd(output: string, runId?: string) {
-      await sdk.scanToolResult("tool", String(output), { enforce: true, framework, request_id: runId });
+      await sdk.scanToolResult("tool", String(output), { enforce: sdk.config.mode === "sync", framework, request_id: runId });
     },
   };
 }

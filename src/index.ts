@@ -4,6 +4,7 @@ import { instrumentAutoGen } from "./adapters/autogen.js";
 import { llamaIndexCallback } from "./adapters/llamaindex.js";
 import { semanticKernelFilters } from "./adapters/semantic-kernel.js";
 import { Client } from "./core/client.js";
+import { Microsoft365AgentsMiddleware } from "./adapters/microsoft-365-agents.js";
 import { ConfigOptions, FileScanOptions, ScanOptions, ShellScanOptions, WebScanOptions } from "./core/types.js";
 
 let client: Client | undefined;
@@ -28,6 +29,11 @@ export function getClient(): Client {
 
 export function instrument(framework: string, options: any = {}) {
   const name = framework.toLowerCase().replace(/_/g, "-");
+  if (["microsoft-365-agents", "m365", "microsoft-365-agents-sdk"].includes(name)) {
+    const middleware = new Microsoft365AgentsMiddleware(options.sdkClient ?? getClient());
+    if (options.adapter) options.adapter.use(middleware);
+    return middleware;
+  }
   if (name === "openai" || name === "openai-assistants" || name === "openai-swarm" || name === "swarm") {
     if (!options.client) throw new Error("OpenAI instrumentation requires { client }");
     return instrumentOpenAI(options.client, { framework: name, sdkClient: options.sdkClient });
@@ -52,7 +58,7 @@ export function scanPrompt(text: string, options: ScanOptions & { enforce?: bool
   return getClient().scanPrompt(text, options);
 }
 
-export function scanResponse(text: string, options: ScanOptions & { wait?: boolean } = {}) {
+export function scanResponse(text: string, options: ScanOptions & { wait?: boolean; enforce?: boolean } = {}) {
   return getClient().scanResponse(text, options);
 }
 
@@ -99,6 +105,8 @@ export { instrumentOpenAI } from "./adapters/openai.js";
 export { langchainCallback } from "./adapters/langchain.js";
 export { llamaIndexCallback } from "./adapters/llamaindex.js";
 export { semanticKernelFilters } from "./adapters/semantic-kernel.js";
+export { Microsoft365AgentsMiddleware } from "./adapters/microsoft-365-agents.js";
+export type { AgentsTurnContext } from "./adapters/microsoft-365-agents.js";
 export type {
   Attachment,
   ClassificationLabel,

@@ -8,7 +8,7 @@ export function llamaIndexCallback(options: { framework?: string; sdkClient?: Cl
   return {
     async onEventStart(eventType: unknown, payload: unknown, eventId?: string) {
       const text = textify(payload);
-      if (text) await sdk.scanPrompt(text, { enforce: true, framework, request_id: String(eventId || "") });
+      if (text) await sdk.scanPrompt(text, { enforce: sdk.config.mode === "sync", framework, request_id: String(eventId || "") });
     },
     async onEventEnd(eventType: unknown, payload: unknown, eventId?: string) {
       const text = textify(payload);

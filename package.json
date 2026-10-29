@@ -1,7 +1,7 @@
 {
   "name": "@ggate/sdk",
-  "version": "0.2.0",
-  "description": "Gödel Gate SDK for monitoring Node.js AI agent frameworks",
+  "version": "0.2.1",
+  "description": "G\u00f6del Gate SDK for monitoring Node.js AI agent frameworks",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,13 +11,25 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist/adapters", "dist/core", "dist/index.js", "dist/index.d.ts", "README.md"],
+  "files": [
+    "dist/adapters",
+    "dist/core",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test dist/tests/*.test.js",
     "prepare": "npm run build"
   },
-  "keywords": ["ai", "agents", "security", "llm", "monitoring"],
+  "keywords": [
+    "ai",
+    "agents",
+    "security",
+    "llm",
+    "monitoring"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -27,10 +39,11 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "undici": "^8.10.1"
+    "undici": "^8.12.3"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
-    "typescript": "^7.0.2"
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "@microsoft/agents-hosting": "^1.9.1"
   }
 }
