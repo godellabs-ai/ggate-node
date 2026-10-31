@@ -79,7 +79,7 @@ Run each with fake/model-stub providers first, then with a real provider key.
 | LangChain/LangGraph | Pass the handler from `instrument("langchain")` / `instrument("langgraph")` in the invoke config. Run one LLM call and one tool call. |
 | AutoGen | Wrap the agent/team with `instrument("autogen", { agent })`. Run `agent.run(...)`. |
 | OpenAI | Wrap the OpenAI client with `instrument("openai", { client })`. Test `chat.completions.create`, `responses.create`, `files.create`, `beta.threads.messages.create`, and `beta.threads.runs.create`. |
-| OpenAI Swarm | Wrap the Swarm client with `instrument("openai-swarm", { client })`. Run one handoff path. |
+| OpenAI Agents SDK (Swarm) | `setDefaultOpenAIClient(instrument("openai-swarm", { client }))` and `instrument("openai-swarm", { agent })`. Run one tool call and one handoff path. |
 | LlamaIndex | Register the callback handler from `instrument("llamaindex")`. Run one query. |
 | Semantic Kernel | Attach the filters from `instrument("semantic-kernel")`. Invoke one prompt function and one tool/function. |
 

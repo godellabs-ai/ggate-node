@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { instrumentOpenAI } from "../adapters/openai.js";
 import { instrumentAutoGen } from "../adapters/autogen.js";
+import { instrumentOpenAIAgent } from "../adapters/openai-agents.js";
 import { llamaIndexCallback } from "../adapters/llamaindex.js";
 import { semanticKernelFilters } from "../adapters/semantic-kernel.js";
 import { Client } from "../core/client.js";
@@ -519,6 +520,36 @@ test("AutoGen wrapper scans run boundary", async () => {
     transport.requests.filter(r => r.op === "scan_text").map((request) => request.event.payload.surface),
     ["prompt", "response"],
   );
+});
+
+test("OpenAI Agents wrapper scans the tools of an agent and its handoffs", async () => {
+  const transport = new FakeTransport();
+  const sdkClient = new Client({ mode: "sync" }, transport as any);
+  const weather = { type: "function", name: "get_weather", async invoke(_ctx: unknown, input: string) { return `sunny ${input}`; } };
+  const billing = { type: "function", name: "refund", async invoke() { return "refunded"; } };
+  const agent = { tools: [weather], handoffs: [{ agent: { tools: [billing], handoffs: [] } }] };
+
+  assert.equal(instrument("openai-agents", { agent, sdkClient }), agent);
+  instrumentOpenAIAgent(agent, { sdkClient }); // a second call does not wrap twice
+
+  assert.equal(await weather.invoke({}, '{"city":"Paris"}'), 'sunny {"city":"Paris"}');
+  assert.equal(await billing.invoke(), "refunded");
+  assert.deepEqual(
+    transport.requests.filter(r => r.op === "scan_text").map((request) => [request.event.payload.surface, request.event.payload.tool]),
+    [["mcp_tool", "get_weather"], ["tool_result", "get_weather"], ["mcp_tool", "refund"], ["tool_result", "refund"]],
+  );
+});
+
+test("OpenAI Agents wrapper stops a blocked tool before it runs", async () => {
+  const transport = { async request() { return { kind: "verdict", verdict: "block", message: "blocked" }; } };
+  const sdkClient = new Client({ mode: "sync" }, transport as any);
+  let ran = false;
+  const tool = { type: "function", name: "delete_files", async invoke() { ran = true; return "done"; } };
+
+  instrument("openai-swarm", { agent: { tools: [tool] }, sdkClient });
+
+  await assert.rejects(tool.invoke(), (error: Error) => error.name === "GgateBlockedError");
+  assert.equal(ran, false);
 });
 
 test("LlamaIndex callback scans start and end", async () => {

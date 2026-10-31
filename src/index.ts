@@ -1,7 +1,8 @@
 import { instrumentOpenAI } from "./adapters/openai.js";
 import { langchainCallback } from "./adapters/langchain.js";
 import { instrumentAutoGen } from "./adapters/autogen.js";
-import { llamaIndexCallback } from "./adapters/llamaindex.js";
+import { instrumentOpenAIAgent } from "./adapters/openai-agents.js";
+import { llamaIndexCallback, wrapLlamaIndexLLM } from "./adapters/llamaindex.js";
 import { semanticKernelFilters } from "./adapters/semantic-kernel.js";
 import { Client } from "./core/client.js";
 import { Microsoft365AgentsMiddleware } from "./adapters/microsoft-365-agents.js";
@@ -34,8 +35,12 @@ export function instrument(framework: string, options: any = {}) {
     if (options.adapter) options.adapter.use(middleware);
     return middleware;
   }
-  if (name === "openai" || name === "openai-assistants" || name === "openai-swarm" || name === "swarm") {
-    if (!options.client) throw new Error("OpenAI instrumentation requires { client }");
+  // Swarm's maintained successor is the OpenAI Agents SDK: { agent } wraps its tools, { client } its model calls.
+  if ((name === "openai-agents" || name === "openai-swarm" || name === "swarm") && options.agent) {
+    return instrumentOpenAIAgent(options.agent, { framework: name, sdkClient: options.sdkClient });
+  }
+  if (name === "openai" || name === "openai-assistants" || name === "openai-agents" || name === "openai-swarm" || name === "swarm") {
+    if (!options.client) throw new Error(`${framework} instrumentation requires { client }${name === "openai" || name === "openai-assistants" ? "" : " or { agent }"}`);
     return instrumentOpenAI(options.client, { framework: name, sdkClient: options.sdkClient });
   }
   if (name === "langchain" || name === "langgraph") {
@@ -46,6 +51,8 @@ export function instrument(framework: string, options: any = {}) {
     return instrumentAutoGen(options.client || options.agent || options.team, { framework: name, sdkClient: options.sdkClient });
   }
   if (name === "llamaindex" || name === "llama-index") {
+    // Pass { llm } to get an enforcing wrapper; without it, an observe-only callback handler.
+    if (options.llm) return wrapLlamaIndexLLM(options.llm, { framework: "llamaindex", sdkClient: options.sdkClient });
     return llamaIndexCallback({ framework: "llamaindex", sdkClient: options.sdkClient });
   }
   if (name === "semantic-kernel" || name === "sk") {
@@ -98,12 +105,14 @@ export function flush(timeoutMs?: number): Promise<boolean> {
   return getClient().flush(timeoutMs);
 }
 
-export { Client, GgateBlockedError } from "./core/client.js";
+export { withSession, currentSessionId } from "./core/context.js";
+export { Client, GgateAgentContainedError, GgateBlockedError } from "./core/client.js";
 export { ConsoleTransport, GgateTransportError } from "./core/console-transport.js";
 export { instrumentAutoGen } from "./adapters/autogen.js";
 export { instrumentOpenAI } from "./adapters/openai.js";
+export { instrumentOpenAIAgent } from "./adapters/openai-agents.js";
 export { langchainCallback } from "./adapters/langchain.js";
-export { llamaIndexCallback } from "./adapters/llamaindex.js";
+export { llamaIndexCallback, wrapLlamaIndexLLM } from "./adapters/llamaindex.js";
 export { semanticKernelFilters } from "./adapters/semantic-kernel.js";
 export { Microsoft365AgentsMiddleware } from "./adapters/microsoft-365-agents.js";
 export type { AgentsTurnContext } from "./adapters/microsoft-365-agents.js";

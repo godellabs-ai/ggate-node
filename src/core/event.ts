@@ -22,10 +22,11 @@
 import os from "node:os";
 import crypto from "node:crypto";
 import { Config } from "./config.js";
+import { currentSessionId } from "./context.js";
 import { RedactionSummary, redactText, sha256Hex } from "./redactor.js";
 import { Attachment, FileScanOptions, ScanOptions, ShellScanOptions, TokenUsage, WebScanOptions } from "./types.js";
 
-export const SDK_VERSION = "0.2.1";
+export const SDK_VERSION = "0.3.0";
 
 // Normalized to the Rust `std::env::consts` vocabulary the rest of the fleet reports
 // (platform_os is a Console dimension, so casing must match the hook collectors).
@@ -173,7 +174,7 @@ export class RuntimeEventBuilder {
           install_source: "manual",
         }),
         session: clean({
-          session_id: options.session_id || DEFAULT_SESSION_ID,
+          session_id: options.session_id || currentSessionId() || DEFAULT_SESSION_ID,
           // Only a correlation the caller actually established. A fresh per-event UUID would
           // correlate one event with itself and fill the Console's correlation column with noise.
           correlation_id: options.correlation_id,

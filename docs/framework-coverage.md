@@ -2,21 +2,20 @@
 
 The SDK is a collector: it captures framework activity and sends it to the Console's scan API
 (`GGATE_CONSOLE_URL` + `GGATE_API_KEY`), which is its only destination. Sync mode waits for that
-verdict before the framework call proceeds; async mode queues preflight events. Explicit waits and `enforce` calls wait for the Console in either mode. Response/result delivery
-checks use `before_delivery` (or `enforce`) while content is still withheld.
+verdict before the framework call proceeds; async mode queues events and never blocks the
+conversation.
 
 ## Coverage Matrix
 
 | Framework | Python | Node.js | Integration point | Enforcement |
 |---|---:|---:|---|---|
-| Microsoft 365 Agents SDK | Yes | Yes | Adapter middleware and public send/update hooks | Incoming content and outgoing delivery in sync mode; internal tools need separate scans |
 | LangChain | Yes | Yes | Callback handler | Prompt/tool preflight in sync mode |
 | LangGraph | Yes | Yes | LangChain-compatible callback handler | Prompt/tool preflight in sync mode |
 | CrewAI | Yes | N/A | CrewAI event listener | Prompt/tool preflight where start events fire |
 | AutoGen / AG2 | Yes | Yes | Public `run` / stream method wrapper | Run-boundary preflight |
 | OpenAI Chat/Responses | Yes | Yes | OpenAI client wrapper | Prompt preflight, response audit |
-| OpenAI Assistants (retired API) | Legacy adapter | Legacy adapter | Files, thread messages, thread runs, tool outputs | Message/run/file preflight; response audit; tool-output enforcement |
-| OpenAI Swarm | Yes | Yes | Swarm `run(...)` wrapper plus Chat Completions underneath | Run-boundary preflight |
+| OpenAI Assistants | Yes | Yes | Files, thread messages, thread runs, tool outputs | Message/run/file preflight; response audit; tool-output enforcement |
+| OpenAI Agents SDK (Swarm's successor) | Yes | Yes | Instrumented OpenAI client via `setDefaultOpenAIClient`, plus the agent's function tools (handoff agents included) | Per-model-call preflight with images/files; tool-call preflight and tool-result audit |
 | LlamaIndex | Yes | Yes | Callback handler | Event-start preflight, event-end audit |
 | Haystack | Yes | N/A | Pipeline/Agent `run` wrapper | Run-boundary preflight |
 | Semantic Kernel | Yes | Yes | Prompt/function filters | Prompt/function preflight |
@@ -28,12 +27,15 @@ checks use `before_delivery` (or `enforce`) while content is still withheld.
 - LangChain Python and JS expose callback handlers for LLM/tool lifecycle events.
 - LangGraph uses the LangChain callback model for graph execution instrumentation.
 - CrewAI exposes event listeners for monitoring integrations.
-- AutoGen AgentChat exposes `run` and `run_stream` methods on agents.
-- OpenAI shut down the Assistants API on August 26, 2026. The SDK retains its legacy wrapper,
-  but that does not make the upstream API available. Use the [Responses migration guide](https://developers.openai.com/api/docs/assistants/migration)
-  for new and migrated integrations.
-- OpenAI Swarm is stateless and powered by Chat Completions, so the OpenAI chat wrapper covers most
-  calls. A direct `run(...)` wrapper is also provided.
+- AutoGen AgentChat exposes `run` and `run_stream` methods on agents. AutoGen ships for Python and .NET only;
+  the Node wrapper is for an AutoGen-shaped object of your own (anything with `run` / `runStream`).
+- OpenAI Assistants has thread messages, runs, tools, and files, but is deprecated and scheduled for
+  shutdown on August 26, 2026. Keep coverage for existing customers, but prefer Responses/Agents for
+  new development.
+- OpenAI Swarm has no working JavaScript package (the `openai-swarm` npm package is a stale port). Its maintained
+  successor, the OpenAI Agents SDK (`@openai/agents`), calls the model through an OpenAI client, so
+  `setDefaultOpenAIClient(instrument("openai-swarm", { client }))` checks every turn and handoff, and
+  `instrument("openai-swarm", { agent })` wraps each function tool. `openai-agents` is accepted as the same name.
 - LlamaIndex exposes callback managers/handlers for event start/end.
 - Haystack exposes pipeline/agent run surfaces and tracing; the SDK wraps run boundaries rather than
   relying on private internals.
@@ -42,7 +44,7 @@ checks use `before_delivery` (or `enforce`) while content is still withheld.
 - DSPy documents observability and custom callback/logging patterns; the SDK uses module/callable
   wrappers for deterministic coverage.
 - Phidata provides built-in monitoring, but that sends to Phidata. The SDK wraps agent run methods
-  so events still flow through Gödel Gate.
+  so events still flow through Godel's Gate.
 
 ## Important Limitations
 
@@ -64,16 +66,10 @@ checks use `before_delivery` (or `enforce`) while content is still withheld.
 - CrewAI event listeners: https://docs.crewai.com/en/concepts/event-listener
 - AutoGen AgentChat agents: https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/agents.html
 - OpenAI Assistants deep dive/deprecation: https://developers.openai.com/api/docs/assistants/deep-dive
-- OpenAI Swarm: https://github.com/openai/swarm
+- OpenAI Agents SDK (JavaScript): https://github.com/openai/openai-agents-js
 - LlamaIndex callbacks: https://developers.llamaindex.ai/python/framework/module_guides/observability/callbacks/
 - Haystack tracing: https://docs.haystack.deepset.ai/docs/tracing
 - Haystack pipeline breakpoints/snapshot callbacks: https://docs.haystack.deepset.ai/docs/pipeline-breakpoints
 - Semantic Kernel filters: https://learn.microsoft.com/en-us/semantic-kernel/concepts/enterprise-readiness/filters
 - DSPy observability: https://dspy.ai/tutorials/observability/
 - Phidata monitoring: https://docs.phidata.com/monitoring
-
-Microsoft 365 middleware never fetches attachment URLs. Inline card/invoke content is scanned;
-remote attachments remain metadata-only. Streaming chunks already delivered cannot be recalled.
-The middleware does not instrument the internals of hosted Foundry or Copilot Studio services.
-Microsoft Agent Framework and Microsoft Agent 365 are distinct products; this adapter targets
-Microsoft 365 Agents SDK only.

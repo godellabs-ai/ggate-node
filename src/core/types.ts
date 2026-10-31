@@ -143,6 +143,8 @@ export interface Decision {
   fail_open: boolean;
   blocked: boolean;
   allowed: boolean;
+  /** The Console's Kill Switch has locked this agent. Also true on a `warn` for a delivered event. */
+  contained: boolean;
 }
 
 export interface Attachment {

@@ -27,6 +27,8 @@ export class DeliveryQueue {
     private readonly transport: TransportLike,
     private readonly maxSize: number,
     private readonly flushTimeoutMs: number,
+    /** Called with each answer, so a verdict on a queued event is not thrown away. */
+    private readonly onResult?: (request: Record<string, any>, response: Record<string, any>) => void,
   ) {}
 
   submit(request: Record<string, any>): void {
@@ -58,7 +60,8 @@ export class DeliveryQueue {
       while (this.queue.length > 0) {
         const item = this.queue.shift()!;
         try {
-          await this.transport.request(item.request);
+          const response = await this.transport.request(item.request);
+          this.onResult?.(item.request, response);
           backoffMs = BACKOFF_START_MS;
         } catch (error) {
           item.attempts += 1;

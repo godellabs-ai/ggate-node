@@ -11,6 +11,7 @@ export function passDecision(): Decision {
     fail_open: false,
     blocked: false,
     allowed: true,
+    contained: false,
   };
 }
 
@@ -25,6 +26,7 @@ export function failOpenDecision(message: string): Decision {
     fail_open: true,
     blocked: false,
     allowed: true,
+    contained: false,
   };
 }
 
@@ -61,5 +63,20 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
     fail_open: Boolean(response.fail_open),
     blocked: verdict === "block",
     allowed: ["pass", "warn", "system"].includes(verdict),
+    contained: (response.reason_codes || []).includes("agent_contained"),
+  };
+}
+
+/** Keep a known lock in force while the Console cannot confirm its release. */
+export function killSwitchHeld(last: Decision, reason: string): Decision {
+  return {
+    ...last,
+    verdict: "block",
+    message: `${last.message} (Kill Switch held: ${reason})`,
+    reason_codes: [...last.reason_codes, "kill_switch_held"],
+    fail_open: false,
+    blocked: true,
+    allowed: false,
+    contained: true,
   };
 }

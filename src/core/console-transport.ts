@@ -88,7 +88,7 @@ export class ConsoleTransport {
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new GgateTransportError(`console rejected the API key (HTTP ${response.status})`);
+      throw new GgateTransportError(authFailure("scan", response.status));
     }
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
@@ -161,7 +161,7 @@ export class ConsoleTransport {
       { "x-api-key": this.config.apiKey ?? "" },
     );
     if (response.status === 401 || response.status === 403) {
-      throw new GgateTransportError(`console rejected the API key (token exchange HTTP ${response.status})`);
+      throw new GgateTransportError(authFailure("token exchange", response.status));
     }
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
@@ -200,4 +200,11 @@ export class ConsoleTransport {
     this.tokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
     return this.accessToken;
   }
+}
+
+// Only a 401 means the Console rejected the key. A 403 usually comes from a proxy or WAF in front of
+// the Console (e.g. Cloudflare bot rules) and never reached it.
+function authFailure(step: string, status: number): string {
+  if (status === 401) return `console rejected the API key (${step} HTTP 401)`;
+  return `console request forbidden (${step} HTTP 403): usually a proxy or WAF in front of the Console blocking this client, not a bad API key`;
 }

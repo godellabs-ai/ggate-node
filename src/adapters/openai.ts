@@ -1,6 +1,6 @@
 import { Client } from "../core/client.js";
 import { getClient } from "../index.js";
-import { textify } from "./common.js";
+import { extractAttachments, lastUserMessage, reasoningOf, textify } from "./common.js";
 import fs from "node:fs";
 
 export function instrumentOpenAI<T extends object>(
@@ -133,21 +133,8 @@ function wrapChat(chat: any, sdk: Client, framework: string) {
     ...chat,
     completions: {
       ...chat.completions,
-      create: async (params: any, ...rest: any[]) => {
-        const prompt = messagesToText(params?.messages || []);
-        await sdk.scanPrompt(prompt, {
-          enforce: sdk.config.mode === "sync",
-          framework,
-          provider: "openai",
-          model: params?.model,
-        });
-        const result = await chat.completions.create(params, ...rest);
-        const text = responseToText(result);
-        if (text) {
-          await sdk.scanResponse(text, { framework, provider: "openai", model: params?.model });
-        }
-        return result;
-      },
+      create: (params: any, ...rest: any[]) =>
+        modelCall(sdk, framework, params?.messages ?? [], params, () => chat.completions.create(params, ...rest)),
     },
   };
 }
@@ -155,29 +142,71 @@ function wrapChat(chat: any, sdk: Client, framework: string) {
 function wrapResponses(responses: any, sdk: Client, framework: string) {
   return {
     ...responses,
-    create: async (params: any, ...rest: any[]) => {
-      await sdk.scanPrompt(inputToText(params?.input), {
-        enforce: sdk.config.mode === "sync",
-        framework,
-        provider: "openai",
-        model: params?.model,
-      });
-      const result = await responses.create(params, ...rest);
-      const text = responseToText(result);
-      if (text) await sdk.scanResponse(text, { framework, provider: "openai", model: params?.model });
-      return result;
-    },
+    create: (params: any, ...rest: any[]) =>
+      modelCall(sdk, framework, params?.input, params, () => responses.create(params, ...rest)),
   };
 }
 
-function messagesToText(messages: any[]): string {
-  return (messages || [])
-    .filter((message) => {
-      const role = String(message?.role || "unknown").toLowerCase();
-      return !role.includes("system");
-    })
-    .map((message) => `${message.role || "unknown"}: ${inputToText(message.content)}`)
-    .join("\n");
+/** The conversation a request names: `metadata.session_id`, then a Responses `conversation`. */
+function sessionOf(params: any): { session_id?: string } {
+  const conversation = typeof params?.conversation === "string" ? params.conversation : params?.conversation?.id;
+  const sessionId = params?.metadata?.session_id ?? conversation;
+  return sessionId ? { session_id: String(sessionId) } : {};
+}
+
+async function modelCall(sdk: Client, framework: string, request: any, params: any, call: () => Promise<any>) {
+  const enforce = sdk.config.mode === "sync";
+  const meta = { framework, provider: "openai", model: params?.model, ...sessionOf(params) };
+  await scanTurn(sdk, request, enforce, meta);
+  const result = await call();
+  if (result && typeof result[Symbol.asyncIterator] === "function") return recordStream(result, sdk, enforce, meta);
+  const text = responseToText(result);
+  if (text) await sdk.scanResponse(text, { enforce, ...meta, ...reasoningOf(result) });
+  return result;
+}
+
+/** Scan what this model call adds to the conversation: a new user turn or a tool result. */
+async function scanTurn(sdk: Client, request: any, enforce: boolean, meta: Record<string, any>) {
+  const newest = Array.isArray(request) ? request[request.length - 1] : undefined;
+  if (newest?.role === "tool" || newest?.role === "function") {
+    const { model: _model, ...toolMeta } = meta;
+    await sdk.scanToolResult(newest.name || newest.tool_call_id || "tool", inputToText(newest.content), { enforce, ...toolMeta });
+    return;
+  }
+  const latest: any = lastUserMessage(request);
+  if (latest === undefined) return;
+  const text = inputToText(typeof latest === "object" && latest !== null && "content" in latest ? latest.content : latest);
+  const attachments = extractAttachments(latest, sdk);
+  if (text || attachments.length) await sdk.scanPrompt(text, { enforce, attachments, ...meta });
+}
+
+function chunkText(chunk: any): string {
+  if (String(chunk?.type ?? "").endsWith("output_text.delta")) return String(chunk.delta ?? "");
+  return (chunk?.choices ?? []).map((choice: any) => (typeof choice?.delta?.content === "string" ? choice.delta.content : "")).join("");
+}
+
+/**
+ * Pass a streamed answer through unchanged and scan the whole text when it ends. The chunks have
+ * already reached the caller by then, so a verdict can stop what follows but cannot recall them.
+ */
+function recordStream(stream: any, sdk: Client, enforce: boolean, meta: Record<string, any>) {
+  return new Proxy(stream, {
+    get(target, prop) {
+      if (prop === Symbol.asyncIterator) {
+        return async function* () {
+          const parts: string[] = [];
+          for await (const chunk of target) {
+            parts.push(chunkText(chunk));
+            yield chunk;
+          }
+          const text = parts.join("");
+          if (text) await sdk.scanResponse(text, { enforce, ...meta });
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 function inputToText(value: any): string {
@@ -189,10 +218,10 @@ function inputToText(value: any): string {
     const blockType = String(value.type || "").toLowerCase();
     if (blockType === "text") {
       return inputToText(value.text);
-    } else if (["image_url", "image", "file", "document", "attachment"].includes(blockType)) {
+    } else if (["image_url", "input_image", "image", "file", "input_file", "document", "attachment", "audio", "input_audio", "video", "input_video", "media"].includes(blockType)) {
       return "";
     }
-    if (["image_url", "file_path", "path", "url"].some(k => value[k] != null)) {
+    if (["image_url", "file_path", "path", "url", "input_audio"].some(k => value[k] != null)) {
       return "";
     }
     if ("text" in value) return String(value.text);

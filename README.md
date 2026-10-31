@@ -36,6 +36,24 @@ Model calls and tools inside handlers still require their own adapter or explici
 `middleware.metadata(context)` as scan options to correlate these calls with the same conversation.
 Remote attachments are metadata-only, and Microsoft-managed internal execution is not visible.
 
+### Changes in 0.3.0
+
+- **Kill Switch.** A lock in the Console raises `GgateAgentContainedError` (a `GgateBlockedError`) in
+  `sync` and `async` mode, even where the caller did not pass `enforce`. In `async` mode the first
+  queued verdict turns scanning synchronous, so an unlock is seen at the next scan. A known lock stays
+  in force while the Console cannot confirm its release; an outage with no lock still fails open.
+- **Sessions.** `await withSession(conversationId, () => runAgent(text))` puts every event of a turn in
+  one session, across all adapters. LangChain and LangGraph also read `session_id` / `thread_id` from
+  run metadata and share a session across nested runs.
+- **One event, one text.** Prompts hold the newest user message, not the resent history. Responses hold
+  the answer, without the task or an echoed prompt or chat template. LlamaIndex records only LLM events.
+- **Responses in `sync` mode** are checked by adapters before they are returned, so a block withholds
+  the answer. This adds one waited scan per model call. Streamed text cannot be recalled.
+- **Streaming** OpenAI calls are recorded when the stream ends. LangChain adapters stop on a block by
+  themselves, and `runStream` wrappers stay async iterables.
+- **Media.** Audio and video parts join images and files: OpenAI `input_audio`, LangChain `audio`/`video`
+  blocks, Anthropic-style `source` blocks, and `@openai/agents` tools through `instrument("openai-agents", { agent })`.
+
 ### Changes in 0.2.1
 
 - `enforce: true` always waits, even when the default mode is `async`.
