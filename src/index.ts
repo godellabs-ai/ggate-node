@@ -105,7 +105,7 @@ export function flush(timeoutMs?: number): Promise<boolean> {
   return getClient().flush(timeoutMs);
 }
 
-export { withSession, currentSessionId } from "./core/context.js";
+export { withSession, currentSessionId, withUser, currentUser } from "./core/context.js";
 export { Client, GgateAgentContainedError, GgateBlockedError } from "./core/client.js";
 export { ConsoleTransport, GgateTransportError } from "./core/console-transport.js";
 export { instrumentAutoGen } from "./adapters/autogen.js";

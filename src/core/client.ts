@@ -86,7 +86,7 @@ export class Client {
   private readonly builder: RuntimeEventBuilder;
   private readonly queue: DeliveryQueue;
   private readonly breaker: Breaker;
-  private lock?: Decision;
+  private readonly locks = new Map<string, Decision>();
 
   /**
    * `options.agentName` and `options.team` are required (see {@link ConfigOptions}); they may come
@@ -107,7 +107,7 @@ export class Client {
     this.queue = new DeliveryQueue(this.transport, this.config.queueMax, this.config.flushTimeoutMs, (request, response) => {
       // A queued event's verdict is how an `async` deployment first learns of a lock. From then on
       // every scan waits for the Console, so a release takes effect at the very next scan.
-      if (request.op === "scan_text") this.observe(decisionFromResponse(response));
+      if (request.op === "scan_text") this.observe(decisionFromResponse(response), this.subject(request.event));
     });
     this.breaker = new Breaker(this.config.cooldownSecs * 1000);
     if (this.config.enabled) {
@@ -199,9 +199,9 @@ export class Client {
     return this.queue.flush(timeoutMs);
   }
 
-  /** Whether the Console last reported this agent as locked by the Kill Switch. */
+  /** Whether any user/framework on this client has a known Kill Switch lock. */
   get contained(): boolean {
-    return this.lock !== undefined;
+    return this.locks.size > 0;
   }
 
   private finish(decision: Decision, enforce?: boolean): Decision {
@@ -211,41 +211,48 @@ export class Client {
   }
 
   /** Track the Kill Switch. Only a real Console answer can set or clear the lock. */
-  private observe(decision: Decision): Decision {
+  private observe(decision: Decision, subject: string): Decision {
     if (decision.contained) {
-      if (!this.lock) console.warn(`[ggate] Kill Switch active for this agent: ${decision.message}`);
-      this.lock = decision;
+      if (!this.locks.has(subject)) console.warn(`[ggate] Kill Switch active for this agent: ${decision.message}`);
+      this.locks.set(subject, decision);
     } else if (!decision.fail_open) {
-      if (this.lock) console.warn("[ggate] Kill Switch released for this agent");
-      this.lock = undefined;
+      if (this.locks.delete(subject)) console.warn("[ggate] Kill Switch released for this agent");
     }
     return decision;
   }
 
   /** The Console gave no answer: fail open, unless a known lock has not been released. */
-  private unavailable(message: string): Decision {
-    return this.lock ? killSwitchHeld(this.lock, "the Console has not confirmed a release") : failOpenDecision(message);
+  private unavailable(message: string, subject: string): Decision {
+    const lock = this.locks.get(subject);
+    return lock ? killSwitchHeld(lock, "the Console has not confirmed a release") : failOpenDecision(message);
+  }
+
+  private subject(event: any): string {
+    // The named agent and owning team are fixed for this client; frameworks may vary per scan.
+    const framework = String(event.source?.client ?? "generic").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return JSON.stringify([event.identity.user?.trim().toLowerCase() ?? null, framework]);
   }
 
   private async sendOrQueue(event: any, redaction: any, wait: boolean): Promise<Decision> {
     if (!this.config.enabled) return passDecision();
     const request = { op: "scan_text", event, redaction };
-    if (!wait && !this.lock) {
+    const subject = this.subject(event);
+    if (!wait && !this.locks.has(subject)) {
       this.queue.submit(request);
       return passDecision();
     }
     if (this.breaker.isOpen()) {
-      return this.unavailable("console unavailable (cooling down after failure)");
+      return this.unavailable("console unavailable (cooling down after failure)", subject);
     }
     try {
-      const decision = this.observe(decisionFromResponse(await this.transport.request(request)));
+      const decision = this.observe(decisionFromResponse(await this.transport.request(request)), subject);
       this.breaker.reset();
       return decision;
     } catch (error) {
       this.breaker.trip();
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[ggate] console scan failed (failing open for ${this.config.cooldownSecs}s): ${message}`);
-      return this.unavailable(message);
+      return this.unavailable(message, subject);
     }
   }
 }

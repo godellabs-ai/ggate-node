@@ -49,6 +49,7 @@ export interface DetectorMatch {
 }
 
 export interface PolicySource {
+  id?: string;
   name: string;
   description?: string;
 }
@@ -133,6 +134,8 @@ export interface Decision {
   message: string;
   matched_detectors: DetectorMatch[];
   policy_source: PolicySource | null;
+  /** All matched policies, including monitor rules, when supplied by the Console. */
+  matched_policies?: PolicySource[];
   detection?: DetectionSummary;
   /** Present on waited scans when the Console produced document classification. */
   document_intelligence: DocumentIntelligence | null;
@@ -170,6 +173,8 @@ export interface TokenUsage {
 }
 
 export interface ScanOptions {
+  /** Server-verified endpoint identity. null/blank clears the configured or scoped user. */
+  user?: string | null;
   /** Content is still withheld from its recipient. Makes response/result scans enforceable. */
   before_delivery?: boolean;
   source_trust?: "PUBLIC_OPEN_SOURCE_REPOSITORY" | "INTERNAL_MANAGED_REPOSITORY";

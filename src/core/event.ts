@@ -22,7 +22,7 @@
 import os from "node:os";
 import crypto from "node:crypto";
 import { Config } from "./config.js";
-import { currentSessionId } from "./context.js";
+import { currentSessionId, currentUser, normalizeUser } from "./context.js";
 import { RedactionSummary, redactText, sha256Hex } from "./redactor.js";
 import { Attachment, FileScanOptions, ScanOptions, ShellScanOptions, TokenUsage, WebScanOptions } from "./types.js";
 
@@ -146,6 +146,9 @@ export class RuntimeEventBuilder {
 
   private event(phase: string, payload: any, primaryText: string, options: ScanOptions) {
     const framework = options.framework || "generic";
+    const scopedUser = currentUser();
+    const user = normalizeUser(options.user !== undefined ? options.user
+      : scopedUser !== undefined ? scopedUser : this.config.user);
     if (payload.surface === "mcp_tool" && !payload.server) payload.server = framework;
 
     let redactionCount = 0;
@@ -161,7 +164,7 @@ export class RuntimeEventBuilder {
         phase,
         identity: clean({
           org_id: this.config.orgId,
-          user: this.config.user,
+          user,
           host: this.config.host,
           workstation_id: this.config.workstationId,
           agent_source: "agent-framework",

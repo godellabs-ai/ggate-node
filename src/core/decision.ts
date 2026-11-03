@@ -56,6 +56,7 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
     message: response.message || "allowed",
     matched_detectors: response.matched_detectors || [],
     policy_source: response.policy_source ?? null,
+    matched_policies: response.matched_policies ?? [],
     detection: response.detection ?? undefined,
     document_intelligence: response.document_intelligence ?? null,
     ...(response.pipeline_status != null ? { pipeline_status: response.pipeline_status } : {}),

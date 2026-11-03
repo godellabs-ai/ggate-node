@@ -107,13 +107,56 @@ full matrix of what each adapter hooks and where it can enforce.
   Assistant"`, not the framework it is built on. The Console lists sessions under this name, so
   three assistants built on LangGraph stay three distinguishable agents. The framework is still
   reported alongside it and still drives the connector view.
-- **`team`** is who is accountable for it. A deployed agent has no person at a keyboard, so the
-  seat identity falls back to the build machine's `<os-user>@<hostname>` — whoever ran the deploy,
-  not whoever owns the workload. The seat identity is still reported unchanged; `team` is the name
-  shown beside it.
+- **`team`** is the workload's owning team. User identity comes from the configured `user` /
+  `GGATE_USER`, falling back to the runtime machine's `<os-user>@<hostname>`. Shared applications
+  should bind their authenticated user per request as described below.
 
 `agentName` usually belongs in code (every install of an app is the same named agent), while
 `team` usually belongs in the environment (it varies per deployment).
+
+### AI access rules and application users
+
+The Console's **Policies → Authorised AI** access rules apply to SDK scans. Select the named
+application (`agentName`), its framework, or all supported agents. The Console resolves users,
+groups, and user tags from its endpoint directory. `team` describes workload ownership; it does
+not grant directory group membership.
+
+In a shared application, bind the authenticated user's endpoint email or directory alias for the
+whole request. Use a value verified by your server's authentication layer, never an identity
+supplied directly in a prompt or request body:
+
+```ts
+import { withUser, withSession, scanPrompt, scanResponse } from "@ggate/sdk";
+
+await withUser(authenticatedUserEmail, () => withSession(conversationId, async () => {
+  // Explicit preflight waits even if GGATE_MODE=async; a block throws GgateBlockedError.
+  await scanPrompt(prompt, { framework: "langgraph", enforce: true });
+  const answer = await runAgent(prompt);
+  await scanResponse(answer, { framework: "langgraph", enforce: true });
+  // Deliver only after the final scan returns.
+}));
+```
+
+`withUser` follows async calls and instrumented adapters and restores the previous identity on
+exit. A scan's `{ user }` option overrides the scope; the scope overrides configured `user` /
+`GGATE_USER`. An explicit `null` or blank user means anonymous and clears the fallback. Set it
+explicitly for unauthenticated requests. Without an override, existing single-user/service
+deployments keep their configured identity. `currentUser()` returns the scoped value, or
+`undefined` outside a scope.
+
+Block rules prevent operations only when scans run before the operation with `enforce: true`, or
+the application checks the returned verdict. Adapter enforcement follows `GGATE_MODE=sync`.
+Audit calls cannot prevent an operation already performed. Warn remains an allowed decision for
+the application to present; `decision.policy_source` and `decision.matched_policies` retain policy
+IDs and names, including Monitor matches. Ordinary access blocks are evaluated again at the next
+scan. Cached Kill Switch locks are separate per user and framework; `client.contained` means at
+least one such lock is known.
+
+SDK API keys do not establish a human provider login or subscription plan. Approved **provider
+account domains** and observed plan tags come from coding-agent/browser collectors. SDK access
+rules use the endpoint user's Console identity and existing directory tags; the SDK does not
+claim provider email, plan, groups, or tags from request metadata. Existing transport fail-open
+behavior is unchanged; applications requiring fail-closed preflight must also check `decision.fail_open`.
 
 ## Connecting to a Console
 
