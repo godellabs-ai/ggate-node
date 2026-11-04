@@ -14,8 +14,9 @@ The Python SDK is [godellabs-ai/ggate-python](https://github.com/godellabs-ai/gg
 
 ## Release compatibility
 
-This SDK release is **0.2.1**, aligned with Gödel Gate Console **0.2.1**.
-Use SDK **0.2.y** with Console **0.2.x**; SDK patch releases may advance independently.
+This SDK release is **0.3.0**, released with Gödel Gate Console **0.3.0**.
+Install a release tag rather than the moving default branch. Keep the SDK release selected by your Console when maintaining an older deployment.
+SDK patch releases may advance independently within **0.3.x**. Keep an older SDK release for an older Console and validate minor upgrades together.
 
 ### Microsoft 365 Agents SDK
 
@@ -68,7 +69,7 @@ Remote attachments are metadata-only, and Microsoft-managed internal execution i
 ## Install
 
 ```bash
-npm install git+https://github.com/godellabs-ai/ggate-node.git
+npm install git+https://github.com/godellabs-ai/ggate-node.git#v0.3.0
 ```
 
 The package compiles on install (`prepare`), so no separate build step is needed. Node 22.19.0+.
