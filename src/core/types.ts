@@ -98,6 +98,7 @@ export interface PipelineIssue {
 
 /** Scan coverage and media evidence; these do not change the security verdict. */
 export interface PipelineStatus {
+  file_extension_exemptions?: { filename: string; extension: string }[];
   errors?: PipelineIssue[];
   warnings?: PipelineIssue[];
   media?: Record<string, unknown>[];
