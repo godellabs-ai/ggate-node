@@ -26,7 +26,7 @@ import { currentSessionId, currentUser, normalizeUser } from "./context.js";
 import { RedactionSummary, redactText, sha256Hex } from "./redactor.js";
 import { Attachment, FileScanOptions, ScanOptions, ShellScanOptions, TokenUsage, WebScanOptions } from "./types.js";
 
-export const SDK_VERSION = "0.3.0";
+export const SDK_VERSION = "0.3.1";
 
 // Normalized to the Rust `std::env::consts` vocabulary the rest of the fleet reports
 // (platform_os is a Console dimension, so casing must match the hook collectors).

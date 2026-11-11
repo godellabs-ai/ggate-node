@@ -1,6 +1,6 @@
 {
   "name": "@ggate/sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "G\u00f6del Gate SDK for monitoring Node.js AI agent frameworks",
   "type": "module",
   "main": "dist/index.js",
