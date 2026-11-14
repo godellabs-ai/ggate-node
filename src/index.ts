@@ -73,6 +73,10 @@ export function scanToolCall(tool: string, inputSummary: unknown, options: ScanO
   return getClient().scanToolCall(tool, inputSummary, options);
 }
 
+export function scanMemoryWrite(content: unknown, options: ScanOptions & { store?: string; operation?: string; enforce?: boolean } = {}) {
+  return getClient().scanMemoryWrite(content, options);
+}
+
 export function scanToolResult(
   tool: string,
   output: string,
@@ -107,7 +111,7 @@ export function flush(timeoutMs?: number): Promise<boolean> {
 
 export { withSession, currentSessionId, withUser, currentUser } from "./core/context.js";
 export { Client, GgateAgentContainedError, GgateBlockedError } from "./core/client.js";
-export { ConsoleTransport, GgateTransportError } from "./core/console-transport.js";
+export { ConsoleTransport, GgateConsoleUnreachableError, GgateTransportError } from "./core/console-transport.js";
 export { instrumentAutoGen } from "./adapters/autogen.js";
 export { instrumentOpenAI } from "./adapters/openai.js";
 export { instrumentOpenAIAgent } from "./adapters/openai-agents.js";
@@ -145,3 +149,6 @@ export type {
   Verdict,
   WebScanOptions,
 } from "./core/types.js";
+
+export { guardStore } from "./adapters/memory.js";
+export { guardVectorStore } from "./adapters/vector-store.js";

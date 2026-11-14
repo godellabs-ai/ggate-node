@@ -25,6 +25,36 @@ export class GgateTransportError extends Error {
   }
 }
 
+/**
+ * The Console itself could not be reached: no connection (DNS, refused, reset, TLS), or a gateway in
+ * front of it answering 502/503/504 for it. A Console that answered with an error, or a scan still
+ * running when the SDK's budget ran out, is not unreachable. Only this case applies the Console's
+ * outage setting.
+ */
+export class GgateConsoleUnreachableError extends GgateTransportError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GgateConsoleUnreachableError";
+  }
+}
+
+/** A gateway status whose body is not the Console's own JSON (its incomplete-scan 503 is JSON). */
+function httpFailure(message: string, status: number, body: string): GgateTransportError {
+  return GATEWAY_STATUSES.has(status) && !body.trimStart().startsWith("{")
+    ? new GgateConsoleUnreachableError(message)
+    : new GgateTransportError(message);
+}
+
+/** A fetch that produced no response. A timeout means the Console may still be working on it. */
+function connectionFailure(baseUrl: string, error: unknown): GgateTransportError {
+  const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : "";
+  if (name === "TimeoutError" || name === "AbortError") {
+    return new GgateTransportError(`console scan timed out (${baseUrl}): ${message}`);
+  }
+  return new GgateConsoleUnreachableError(`console unreachable (${baseUrl}): ${message}`);
+}
+
 /** What the client and queue need from a transport: one JSON request/response exchange. */
 export interface TransportLike {
   request(request: Record<string, any>): Promise<Record<string, any>>;
@@ -39,6 +69,7 @@ const GATEWAY_STATUSES = new Set([502, 503, 504]);
 export class ConsoleTransport {
   private readonly baseUrl: string;
   private accessToken?: string;
+  private credential?: string;
   private refreshToken?: string;
   private tokenExpiresAt = 0;
   private exchange?: Promise<string>;
@@ -92,7 +123,7 @@ export class ConsoleTransport {
     }
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
-      throw new GgateTransportError(`console scan failed: HTTP ${response.status} ${body}`);
+      throw httpFailure(`console scan failed: HTTP ${response.status} ${body}`, response.status, body);
     }
     try {
       return (await response.json()) as Record<string, any>;
@@ -114,21 +145,30 @@ export class ConsoleTransport {
         dispatcher: await this.tlsDispatcher(),
       } as RequestInit);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new GgateTransportError(`console unreachable (${this.baseUrl}): ${message}`);
+      throw connectionFailure(this.baseUrl, error);
     }
   }
 
   /** Current access token, refreshing the token pair when missing or near expiry. */
-  private token(): Promise<string> {
-    if (this.accessToken && Date.now() < this.tokenExpiresAt - TOKEN_SLACK_MS) {
-      return Promise.resolve(this.accessToken);
+  private async token(): Promise<string> {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (this.exchange) {
+        await this.exchange;
+        continue;
+      }
+      const key = this.config.resolveApiKey();
+      if (key !== this.credential) {
+        this.credential = key;
+        this.accessToken = undefined;
+        this.refreshToken = undefined;
+      }
+      if (!key) throw new GgateTransportError("Console API key source is empty or unavailable");
+      if (this.accessToken && Date.now() < this.tokenExpiresAt - TOKEN_SLACK_MS) return this.accessToken;
+      this.exchange = this.obtainToken().finally(() => { this.exchange = undefined; });
+      const token = await this.exchange;
+      if (key === this.config.resolveApiKey()) return token;
     }
-    // Deduplicate concurrent exchanges onto one in-flight request.
-    this.exchange ??= this.obtainToken().finally(() => {
-      this.exchange = undefined;
-    });
-    return this.exchange;
+    throw new GgateTransportError("Console API key changed repeatedly during authentication");
   }
 
   private async obtainToken(): Promise<string> {
@@ -150,7 +190,7 @@ export class ConsoleTransport {
     }
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
-      throw new GgateTransportError(`console token refresh failed: HTTP ${response.status}${body ? ` ${body}` : ""}`);
+      throw httpFailure(`console token refresh failed: HTTP ${response.status}${body ? ` ${body}` : ""}`, response.status, body);
     }
     return this.acceptTokenPair(response, "refresh");
   }
@@ -158,7 +198,7 @@ export class ConsoleTransport {
   private async exchangeApiKey(): Promise<string> {
     const response = await this.fetchToken(
       "/api/v1/detection-engine/token",
-      { "x-api-key": this.config.apiKey ?? "" },
+      { "x-api-key": this.credential ?? "" },
     );
     if (response.status === 401 || response.status === 403) {
       throw new GgateTransportError(authFailure("token exchange", response.status));
@@ -166,7 +206,7 @@ export class ConsoleTransport {
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
       const detail = body ? ` ${body}` : "";
-      throw new GgateTransportError(`console token exchange failed: HTTP ${response.status}${detail}`);
+      throw httpFailure(`console token exchange failed: HTTP ${response.status}${detail}`, response.status, body);
     }
     return this.acceptTokenPair(response, "exchange");
   }
@@ -181,8 +221,7 @@ export class ConsoleTransport {
         dispatcher: await this.tlsDispatcher(),
       } as RequestInit);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new GgateTransportError(`console unreachable (${this.baseUrl}): ${message}`);
+      throw connectionFailure(this.baseUrl, error);
     }
   }
 

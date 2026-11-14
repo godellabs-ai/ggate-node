@@ -249,6 +249,17 @@ Transport failures fail open; missing agent identity and explicit block enforcem
   unconfigured) yields an allow decision with `fail_open: true`. After a failure the SDK fails
   open instantly for a cooldown (`GGATE_COOLDOWN_SECS`, default 30) instead of re-calling a
   struggling Console on every request.
+- **Console outages**: under Console Settings → General → *Behaviour when the Console is down*
+  an administrator sets a default (fail open or fail closed) and exceptions that get the opposite —
+  endpoint users, teams, user tags, coding agents, provider domains, or SDK agent names such as this
+  client's `agent_name`. Every answered scan carries what applies to its user
+  (`console_outage_action`) and to this agent's other users (`console_outage_fallback`); the SDK
+  remembers both (`client.consoleOutageAction(user)`). When that answer is `block`, a waited-for scan
+  that cannot reach the Console at all — no connection, or a gateway answering 502/503/504 for it — returns a `block`
+  decision with reason code `console_unreachable` (raised by `enforce` calls), for the rest of the
+  cooldown too. A Console that answered with an error, a scan still running when `GGATE_TIMEOUT_MS`
+  ran out, and a process that has not yet heard from the Console keep failing open. Queued
+  (audit) scans are never blocked.
 - **Background queue**: bounded (`GGATE_QUEUE_MAX`, drop-oldest), retries transient failures
   with capped backoff, and its shutdown flush is deadline-bounded (`GGATE_FLUSH_TIMEOUT_MS`,
   default 3000) so application exit never hangs. Call `flush()` to drain explicitly.
@@ -257,10 +268,10 @@ Transport failures fail open; missing agent identity and explicit block enforcem
 
 ## Configuration
 
-`GGATE_CONSOLE_URL` and `GGATE_API_KEY` are required, as are the agent's name and owning team
+A Console URL and API key source are required, as are the agent's name and owning team
 (in code or via `GGATE_AGENT_NAME` / `GGATE_TEAM`); everything else has a default. Identity
 falls back to the device config at `~/.ggate/config.yaml` when an agent installed on the same
-machine wrote one — read for identity only, so SDK events land under the same org/seat/device as
+machine wrote one — also used for Console URL and credentials, so SDK events land under the same org/seat/device as
 that machine's other collectors. Environment variables:
 
 | Variable | Meaning | Default |
@@ -268,8 +279,8 @@ that machine's other collectors. Environment variables:
 | `GGATE_AGENT_NAME` | agent name — **required** (or `agentName`) | unset |
 | `GGATE_TEAM` | owning team — **required** (or `team`) | unset |
 | `GGATE_MODE` | `sync` (enforce) or `async` (observe) | `sync` |
-| `GGATE_CONSOLE_URL` | Console base URL, e.g. `https://godel-gate.example.com` — **required** | unset |
-| `GGATE_API_KEY` | Console IAM API key (`godel_...`) — **required** | unset |
+| `GGATE_CONSOLE_URL` | Console base URL override, e.g. `https://godel-gate.example.com` | config `api_url` |
+| `GGATE_API_KEY` | Legacy environment fallback for the Console IAM API key | config `api_key` first |
 | `GGATE_CONSOLE_CA_CERT` | PEM CA used to verify a private-CA Console | system trust |
 | `GGATE_CONSOLE_INSECURE` | Dev only: accept a self-signed Console certificate | off |
 | `GGATE_TIMEOUT_MS` | per-request timeout (Python: socket-operation timeout) | 4000 |
@@ -309,3 +320,76 @@ live-Console smoke test, policy enforcement, and per-framework checks.
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
+
+## Credential rotation and workload identity
+
+The SDK reads the optional collector config at `GGATE_CONFIG`, otherwise
+`$GGATE_HOME/config.yaml` (default `~/.ggate/config.yaml`). Its `api_url` supplies the Console URL
+when no explicit URL/environment override is set. The default API key comes from `api_key` in
+that file; `GGATE_API_KEY` remains a fallback.
+
+For an organization-managed environment secret, set `GGATE_API_KEY_ENV=COMPANY_GATE_KEY` or
+`api_key_env: COMPANY_GATE_KEY` in the config. This selects the **name** of the environment
+variable, not the secret. A selected source that is empty does not fall back to a stale config key.
+All coding-agent hooks support the same config/environment selector. Environment updates must
+reach the agent/service process (usually by relaunching it).
+
+For live SDK rotation, use `GGATE_API_KEY_FILE=/mounted/secret` or a synchronous key-provider
+callback. The SDK rereads the selected key source before authentication and discards cached
+access/refresh tokens when it changes. Provider, named environment, and mounted file selectors
+are authoritative in that order, followed by an explicit API key, config key and legacy environment
+fallback. Update the selected source, verify a scan, then revoke the old key; this does not provide
+a server-side rotation grace window or promise zero failed in-flight scans.
+
+Enable `GGATE_CLOUD_INSTANCE_METADATA=1` and Console **Settings → General → Cloud instance
+metadata** to include allowlisted AWS/GCP/Azure metadata plus pod/function identity. Kubernetes
+uses `POD_NAMESPACE`, `POD_NAME`, `POD_UID`, `NODE_NAME`, `POD_SERVICE_ACCOUNT`; Lambda, Cloud Run
+and Azure Functions use their service/function/instance variables. Metadata discovery never reads
+role credentials or identity tokens. Explicit workload identity is also allowlisted. The discovered
+identity is cached per client; recreate the client after a workload move.
+
+Options are `apiKeyEnv`, `apiKeyFile`, `apiKeyProvider`, `cloudInstanceMetadata` and
+`workloadIdentity`. For example: `init({ agentName: "Assistant", team: "Platform",
+apiKeyProvider: () => secretCache.currentKey })`.
+
+## Retrieval and memory protection
+
+The LangChain/LangGraph callback includes `handleRetrieverStart`, `handleRetrieverEnd` and
+`handleRetrieverError`. In sync mode, returned documents are scanned before reaching the model
+and block exceptions propagate. Async mode remains observation. Run metadata `agent_id` and
+`agent_type` is inherited from parent runs and carried on tool events; scan options accept them too.
+
+Use `guardStore(store, { sdkClient: client })` from `@ggate/sdk` around a backing store with
+`put/get`. Both facade methods are async. Writes are scanned before invoking the store and reads
+before returning values. The facade always requests enforcement; batch/delete APIs are not
+exposed. Use the wrapped instance for every protected access.
+
+`client.scanMemoryWrite(content, { store: "memory", operation: "put" })` (also exported as
+`scanMemoryWrite`) scans JSON-compatible plaintext and metadata before persistence. It always
+waits, even in async mode, and throws `GgateBlockedError` on Block by default. With
+`enforce: false`, the caller must inspect the returned decision before writing.
+
+```ts
+import { guardVectorStore } from "@ggate/sdk";
+
+const protectedVectors = guardVectorStore(vectorStore, {
+  sdkClient: client,
+  contentOf: (_operation, args) => args[0], // addDocuments receives plaintext plus metadata
+});
+await protectedVectors.addDocuments([
+  { pageContent: "The customer prefers concise answers.", metadata: { source: "support" } },
+]);
+```
+
+The facade exposes the provider's existing `add`, `upsert`, `update`, `addDocuments`, `addTexts`
+and `addVectors` methods as async functions. Each scans the whole batch before one provider call,
+retaining its `this`, arguments and return value. No other methods are forwarded. Adapt
+`contentOf` to include all original plaintext and metadata; for `addVectors(vectors, documents)`,
+select `args[1]`. Embeddings alone cannot reveal instructions. You can instead call
+`scanMemoryWrite` before embedding or before a custom provider write.
+
+Enable **Block poisoned memory writes** in Console Policies and select **Block**; its shipped
+default is Monitor. Requires SDK and Gate builds containing this control. Events use the existing
+pre-action `mcp_tool` contract with tool `memory.write`, preserving normal rules, models,
+attribution and storage redaction. Transport errors retain the SDK's outage/fail-open behavior.
+Unwrapped writes, remote managed memory and delete APIs are not intercepted.

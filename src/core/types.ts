@@ -201,6 +201,8 @@ export interface ScanOptions {
   tool_calls?: number;
   duration_ms?: number;
   subagent_type?: string;
+  agent_id?: string;
+  agent_type?: string;
   /** Tool-call/tool-result-only: MCP server + recognized external service. */
   server?: string;
   service?: string;
@@ -246,6 +248,14 @@ export interface ConfigDefaults {
   consoleUrl?: string;
   /** IAM API key for the Console scan API (Console UI -> Admin -> API keys). Required. */
   apiKey?: string;
+  /** Authoritative environment variable name; reread before authentication. */
+  apiKeyEnv?: string;
+  cloudInstanceMetadata?: boolean;
+  workloadIdentity?: Record<string, string>;
+  /** Mounted secret file, reread before authentication. */
+  apiKeyFile?: string;
+  /** Synchronous secret-provider callback for live credential rotation. */
+  apiKeyProvider?: () => string | undefined;
   /** Skip TLS verification for the Console (dev only: accept a self-signed cert). */
   consoleInsecureTls?: boolean;
   /** PEM CA certificate used to verify a Console signed by a private CA. */

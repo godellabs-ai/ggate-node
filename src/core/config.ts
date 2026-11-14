@@ -1,13 +1,9 @@
 /**
  * Configuration and identity resolution.
  *
- * The SDK scans against a Console and nothing else: `GGATE_CONSOLE_URL` + `GGATE_API_KEY`
- * are the only required settings. The device config an installed agent maintains at
- * `~/.ggate/config.yaml` is read for **identity only** (org, seat user, workstation id), and
- * only when the file happens to exist — the SDK never talks to an agent. Sharing those values
- * keeps SDK events attributed to the same org/seat/device as the coding-agent and browser
- * events from the same machine, so the Console correlates them instead of inventing a second
- * identity.
+ * Console URL, credentials and identity can come from the local collector config. Explicit
+ * credential providers, named environment variables and mounted secret files support rotation.
+ * The SDK connects directly to the Console; it does not call a local Detection Engine.
  */
 
 import fs from "node:fs";
@@ -42,15 +38,20 @@ function readConfigScalar(name: string): string | undefined {
   try {
     const file = expandHome(process.env.GGATE_CONFIG || "") || path.join(ggateHome(), "config.yaml");
     for (const rawLine of fs.readFileSync(/* turbopackIgnore: true */ file, "utf8").split("\n")) {
-      const line = rawLine.split("#", 1)[0];
-      const idx = line.indexOf(":");
-      if (idx < 0) continue;
-      if (line.slice(0, idx).trim() !== name) continue;
-      const value = line
-        .slice(idx + 1)
-        .trim()
-        .replace(/^['"]|['"]$/g, "");
-      return value || undefined;
+      if (/^\s/.test(rawLine)) continue;
+      const idx = rawLine.indexOf(":");
+      if (idx < 0 || rawLine.slice(0, idx) !== name) continue;
+      const value = rawLine.slice(idx + 1).trim();
+      if (value.startsWith('"')) {
+        const match = value.match(/^"(?:[^"\\]|\\.)*"(?=\s*(?:#|$))/);
+        return match ? trimmed(JSON.parse(match[0])) : undefined;
+      }
+      if (value.startsWith("'")) {
+        const match = value.match(/^'((?:[^']|'')*)'\s*(?:#.*)?$/);
+        return match ? trimmed(match[1].replace(/''/g, "'")) : undefined;
+      }
+      const plain = value.replace(/\s+#.*$/, "").trim();
+      return ["", "null", "Null", "NULL", "~"].includes(plain) ? undefined : plain;
     }
   } catch {
     /* no config file — fall through */
@@ -103,6 +104,11 @@ export class Config {
   timeoutMs: number;
   consoleUrl?: string;
   apiKey?: string;
+  apiKeyEnv?: string;
+  cloudInstanceMetadata: boolean;
+  workloadIdentity: Record<string, string>;
+  apiKeyFile?: string;
+  apiKeyProvider?: () => string | undefined;
   consoleInsecureTls: boolean;
   consoleCaCert?: string;
   queueMax: number;
@@ -131,8 +137,13 @@ export class Config {
     this.timeoutMs = options.timeoutMs ?? defaultTimeoutMs();
     // Where scans go. Both are required; without them every scan fails open with a message
     // saying so (see `Client`), because a missing setting must never break the host app.
-    this.consoleUrl = options.consoleUrl ?? process.env.GGATE_CONSOLE_URL ?? undefined;
-    this.apiKey = options.apiKey ?? process.env.GGATE_API_KEY ?? undefined;
+    this.consoleUrl = options.consoleUrl ?? process.env.GGATE_CONSOLE_URL ?? readConfigScalar("api_url");
+    this.cloudInstanceMetadata = options.cloudInstanceMetadata ?? boolEnv("GGATE_CLOUD_INSTANCE_METADATA", readConfigScalar("cloud_instance_metadata_enabled") === "true");
+    this.workloadIdentity = options.workloadIdentity ?? {};
+    this.apiKey = options.apiKey;
+    this.apiKeyEnv = options.apiKeyEnv ?? process.env.GGATE_API_KEY_ENV ?? readConfigScalar("api_key_env");
+    this.apiKeyFile = options.apiKeyFile ?? process.env.GGATE_API_KEY_FILE;
+    this.apiKeyProvider = options.apiKeyProvider;
     // Dev escape hatch: accept a self-signed Console cert (e.g. https://localhost).
     this.consoleInsecureTls =
       options.consoleInsecureTls ?? boolEnv("GGATE_CONSOLE_INSECURE", false);
@@ -181,8 +192,17 @@ export class Config {
   }
 
   /** Whether a Console to scan against has been supplied. */
+  resolveApiKey(): string | undefined {
+    if (this.apiKeyProvider) return this.apiKeyProvider()?.trim() || undefined;
+    if (this.apiKeyEnv) return process.env[this.apiKeyEnv]?.trim() || undefined;
+    if (this.apiKeyFile) {
+      try { return fs.readFileSync(this.apiKeyFile, "utf8").trim() || undefined; } catch { return undefined; }
+    }
+    return this.apiKey ?? readConfigScalar("api_key") ?? process.env.GGATE_API_KEY;
+  }
+
   get configured(): boolean {
-    return Boolean(this.consoleUrl && this.apiKey);
+    return Boolean(this.consoleUrl && this.resolveApiKey());
   }
 }
 

@@ -177,6 +177,8 @@ export class RuntimeEventBuilder {
           install_source: "manual",
         }),
         session: clean({
+          agent_id: options.agent_id,
+          agent_type: options.agent_type,
           session_id: options.session_id || currentSessionId() || DEFAULT_SESSION_ID,
           // Only a correlation the caller actually established. A fresh per-event UUID would
           // correlate one event with itself and fill the Console's correlation column with noise.

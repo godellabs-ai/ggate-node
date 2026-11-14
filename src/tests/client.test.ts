@@ -285,12 +285,14 @@ test("attachmentFromPath hashes the full file and bounds captured content", () =
 /** Run `body` with GGATE_CONSOLE_URL/GGATE_API_KEY unset, then restore them. A developer
  * machine often exports a real key, which would otherwise decide these assertions. */
 function withoutConsoleEnv<T>(body: () => T): T {
-  const saved = { url: process.env.GGATE_CONSOLE_URL, key: process.env.GGATE_API_KEY };
+  const saved = { url: process.env.GGATE_CONSOLE_URL, key: process.env.GGATE_API_KEY, config: process.env.GGATE_CONFIG };
+  process.env.GGATE_CONFIG = path.join(os.tmpdir(), `ggate-missing-${process.pid}-${Date.now()}.yaml`);
   delete process.env.GGATE_CONSOLE_URL;
   delete process.env.GGATE_API_KEY;
   try {
     return body();
   } finally {
+    if (saved.config == null) delete process.env.GGATE_CONFIG; else process.env.GGATE_CONFIG = saved.config;
     if (saved.url != null) process.env.GGATE_CONSOLE_URL = saved.url;
     if (saved.key != null) process.env.GGATE_API_KEY = saved.key;
   }

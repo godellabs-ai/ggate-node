@@ -30,6 +30,26 @@ export function failOpenDecision(message: string): Decision {
   };
 }
 
+/** Matches the Gate collectors (`ggate_core::console_outage::MESSAGE`). */
+export const CONSOLE_OUTAGE_MESSAGE =
+  "The Gödel Gate Console is unreachable and your organization blocks AI activity until it is reachable again. Retry once the Console is back.";
+
+/** The Console is unreachable and its General Settings block events until it is back. */
+export function consoleOutageDecision(): Decision {
+  return {
+    verdict: "block",
+    reason_codes: ["console_unreachable"],
+    message: CONSOLE_OUTAGE_MESSAGE,
+    matched_detectors: [],
+    policy_source: null,
+    document_intelligence: null,
+    fail_open: false,
+    blocked: true,
+    allowed: false,
+    contained: false,
+  };
+}
+
 /**
  * Parse a scan response body. The Console returns a flattened decision plus optional document
  * intelligence; an explicit

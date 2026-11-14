@@ -7,11 +7,13 @@ const MAX_TRACKED_RUNS = 10_000;
 
 interface Run {
   session_id?: string;
+  agent_id?: string;
+  agent_type?: string;
   prompt?: string;
   tool?: string;
 }
 
-export function langchainCallback(options: { framework?: string; sdkClient?: Client; session_id?: string } = {}) {
+export function langchainCallback(options: { framework?: string; sdkClient?: Client; session_id?: string; agent_id?: string; agent_type?: string } = {}) {
   const sdk = options.sdkClient ?? getClient();
   const framework = options.framework ?? "langchain";
   const enforce = () => sdk.config.mode === "sync";
@@ -31,6 +33,8 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
       ?? options.session_id ?? parentRunId ?? runId;
     const run = runs.get(key) ?? {};
     run.session_id = sessionId ? String(sessionId) : undefined;
+    run.agent_id = metadata?.agent_id ?? known?.agent_id ?? options.agent_id;
+    run.agent_type = metadata?.agent_type ?? known?.agent_type ?? options.agent_type;
     runs.delete(key);
     runs.set(key, run);
     if (runs.size > MAX_TRACKED_RUNS) runs.delete(runs.keys().next().value!);
@@ -61,7 +65,7 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
       const raw = (prompts || []).join("\n");
       const run = track(runId, parentRunId, metadata);
       run.prompt = raw;
-      await sdk.scanPrompt(templateUserText(raw), { enforce: enforce(), framework, request_id: runId, session_id: run.session_id });
+      await sdk.scanPrompt(templateUserText(raw), { enforce: enforce(), framework, request_id: runId, session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type });
     },
     async handleChatModelStart(_llm: unknown, messages: any[][], runId?: string, parentRunId?: string, _extra?: unknown, _tags?: string[], metadata?: Record<string, any>) {
       const run = track(runId, parentRunId, metadata);
@@ -72,7 +76,7 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
           enforce: enforce(),
           framework,
           request_id: runId,
-          session_id: run.session_id,
+          session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type,
           attachments: extractAttachments(latest, sdk),
         });
       }
@@ -80,7 +84,7 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
     async handleLLMEnd(output: any, runId?: string) {
       const run = forget(runId);
       const text = stripPromptEcho(llmOutputToText(output), run.prompt);
-      if (text) await sdk.scanResponse(text, { enforce: enforce(), framework, request_id: runId, session_id: run.session_id, ...reasoningOf(output) });
+      if (text) await sdk.scanResponse(text, { enforce: enforce(), framework, request_id: runId, session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type, ...reasoningOf(output) });
     },
     handleLLMError(_error: unknown, runId?: string) {
       forget(runId);
@@ -88,12 +92,26 @@ export function langchainCallback(options: { framework?: string; sdkClient?: Cli
     async handleToolStart(tool: any, input: string, runId?: string, parentRunId?: string, _tags?: string[], metadata?: Record<string, any>, name?: string) {
       const run = track(runId, parentRunId, metadata);
       run.tool = name || tool?.name || "tool";
-      await sdk.scanToolCall(run.tool ?? "tool", input, { enforce: enforce(), framework, request_id: runId, session_id: run.session_id });
+      await sdk.scanToolCall(run.tool ?? "tool", input, { enforce: enforce(), framework, request_id: runId, session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type });
     },
     async handleToolEnd(output: unknown, runId?: string) {
       const run = forget(runId);
-      await sdk.scanToolResult(run.tool || "tool", textify(output) || String(output), { enforce: enforce(), framework, request_id: runId, session_id: run.session_id });
+      await sdk.scanToolResult(run.tool || "tool", textify(output) || String(output), { enforce: enforce(), framework, request_id: runId, session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type });
     },
+    handleRetrieverStart(_retriever: unknown, _query: string, runId?: string, parentRunId?: string, _tags?: string[], metadata?: Record<string, any>) {
+      track(runId, parentRunId, metadata);
+    },
+    async handleRetrieverEnd(documents: Array<{ pageContent?: string; metadata?: unknown }>, runId?: string) {
+      const run = forget(runId);
+      for (const document of documents ?? []) {
+        const content = document.pageContent ?? textify(document);
+        const output = document.metadata == null ? content : `${content}\nMetadata:\n${JSON.stringify(document.metadata)}`;
+        await sdk.scanToolResult("retriever", output, {
+          enforce: enforce(), before_delivery: enforce(), framework, request_id: runId, session_id: run.session_id, agent_id: run.agent_id, agent_type: run.agent_type,
+        });
+      }
+    },
+    handleRetrieverError(_error: unknown, runId?: string) { forget(runId); },
     handleToolError(_error: unknown, runId?: string) {
       forget(runId);
     },
