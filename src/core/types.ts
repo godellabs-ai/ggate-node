@@ -24,7 +24,22 @@ export interface FrameworkMappings {
   nist?: string[];
 }
 
+export interface EvidenceProvenance {
+  source: string;
+  source_id?: string;
+  source_version?: string;
+  ingested_at?: string;
+  first_seen?: string;
+  last_seen?: string;
+  expires_at?: string;
+  freshness?: string;
+  confidence?: string;
+  reason?: string;
+}
+
 export interface MatchEvidence {
+  provenance?: EvidenceProvenance[];
+  origins?: string[];
   data_labels?: string[];
   entities?: string[];
   channel?: string;
@@ -60,6 +75,14 @@ export interface TopicClassification {
   runner_up?: string;
   runner_up_confidence?: number;
   resolution?: TopicResolution;
+  aggregation?: TopicAggregation;
+}
+
+export interface TopicAggregation {
+  method: string;
+  evaluated_windows: number;
+  classified_windows: number;
+  classified_fraction: number;
 }
 
 export interface TopicResolution {
@@ -98,6 +121,12 @@ export interface PipelineIssue {
 
 /** Scan coverage and media evidence; these do not change the security verdict. */
 export interface PipelineStatus {
+  repository_file_exemptions?: {
+    filename: string;
+    repository: string;
+    relative_path: string;
+    content_sha256?: string;
+  }[];
   file_extension_exemptions?: { filename: string; extension: string }[];
   errors?: PipelineIssue[];
   warnings?: PipelineIssue[];
@@ -121,8 +150,19 @@ export interface SensitivityClassification {
   required_handling?: string[];
 }
 
+export interface ClassificationCoverage {
+  samples: { chunk_index: number; start_byte: number; end_byte: number }[];
+  input_bytes: number;
+  selected_bytes: number;
+  total_chunks: number;
+  selected_chunk_indices: number[];
+  classified_samples: number;
+  selection_method: string;
+}
+
 /** Document classification context returned beside the scan decision. */
 export interface DocumentIntelligence {
+  coverage?: ClassificationCoverage;
   file_classification?: FileClassification;
   taxonomy: DocumentTaxonomy;
   sensitivity: SensitivityClassification;
@@ -138,10 +178,15 @@ export interface Decision {
   /** All matched policies, including monitor rules, when supplied by the Console. */
   matched_policies?: PolicySource[];
   detection?: DetectionSummary;
+  detection_url?: string;
+  console_outage_action?: "allow" | "block";
+  console_outage_fallback?: "allow" | "block";
   /** Present on waited scans when the Console produced document classification. */
   document_intelligence: DocumentIntelligence | null;
   /** Absent when the Console reports no pipeline issues or media evidence. */
   pipeline_status?: PipelineStatus;
+  /** Model execution coverage returned with a policy-resolved partial scan. */
+  model_status?: { state: string; reason_codes?: string[]; attempted?: number; completed?: number };
   /** Media policy decision returned by Gate 0.2.1. */
   media_gate?: Record<string, unknown>;
   fail_open: boolean;

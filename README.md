@@ -14,9 +14,9 @@ The Python SDK is [godellabs-ai/ggate-python](https://github.com/godellabs-ai/gg
 
 ## Release compatibility
 
-This SDK release is **0.3.1**, released with Gödel Gate Console **0.3.1**.
+This SDK release is **0.4.0**, released with Gödel Gate Console **0.4.0**.
 Install a release tag rather than the moving default branch. Keep the SDK release selected by your Console when maintaining an older deployment.
-SDK patch releases may advance independently within **0.3.x**. Keep an older SDK release for an older Console and validate minor upgrades together.
+SDK patch releases may advance independently within **0.4.x**. Keep an older SDK release for an older Console and validate minor upgrades together.
 
 ### Microsoft 365 Agents SDK
 
@@ -36,6 +36,14 @@ No Microsoft package is loaded by Gate itself; the host application supplies its
 Model calls and tools inside handlers still require their own adapter or explicit scans. Use
 `middleware.metadata(context)` as scan options to correlate these calls with the same conversation.
 Remote attachments are metadata-only, and Microsoft-managed internal execution is not visible.
+
+### Changes in 0.4.0
+
+- On HTTP 503 or 504, the SDK honors a Console policy decision tied to the submitted event.
+  Inspect `model_status` for coverage. An allowed partial scan sets `fail_open`.
+- Blocked decisions expose `detection_url` when the Console supplies an event link.
+- Document intelligence includes classification coverage and topic aggregation when available.
+- A response without a verdict is marked fail-open. A previously confirmed Kill Switch lock stays in force until the Console confirms release.
 
 ### Changes in 0.3.1
 
@@ -77,7 +85,7 @@ Remote attachments are metadata-only, and Microsoft-managed internal execution i
 ## Install
 
 ```bash
-npm install git+https://github.com/godellabs-ai/ggate-node.git#v0.3.1
+npm install git+https://github.com/godellabs-ai/ggate-node.git#v0.4.0
 ```
 
 The package compiles on install (`prepare`), so no separate build step is needed. Node 22.19.0+.
