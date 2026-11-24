@@ -11,9 +11,11 @@ class Console {
   events: any[] = [];
   locks = new Set<string>();
   down = false;
+  malformed = false;
   verdict = "pass";
   async request(request: any) {
     if (request.op !== "scan_text") return { kind: "ok" };
+    if (this.malformed) return {};
     if (this.down) throw new Error("console down");
     const event = request.event;
     this.events.push(event);
@@ -122,6 +124,9 @@ for (const mode of ["sync", "async"] as const) {
     await sdk.scanPrompt("other user", { ...alice, user: "bob@example.com", enforce: true });
     await sdk.scanPrompt("other framework", { ...alice, framework: "langchain", enforce: true });
     assert.equal(sdk.contained, true);
+    console.malformed = true;
+    await assert.rejects(sdk.scanPrompt("no verdict", alice), GgateAgentContainedError);
+    console.malformed = false;
     console.down = true;
     await assert.rejects(sdk.scanPrompt("locked", { ...alice, user: "ALICE@example.com" }), GgateAgentContainedError);
     assert.equal((await sdk.scanPrompt("unlocked", { ...alice, user: "bob@example.com", enforce: true })).fail_open, true);

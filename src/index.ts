@@ -122,6 +122,7 @@ export { Microsoft365AgentsMiddleware } from "./adapters/microsoft-365-agents.js
 export type { AgentsTurnContext } from "./adapters/microsoft-365-agents.js";
 export type {
   Attachment,
+  ClassificationCoverage,
   ClassificationLabel,
   ConfigDefaults,
   ConfigOptions,
@@ -131,6 +132,7 @@ export type {
   DetectorMatch,
   DocumentIntelligence,
   DocumentTaxonomy,
+  EvidenceProvenance,
   FileScanOptions,
   FileClassification,
   FrameworkMappings,
@@ -144,6 +146,7 @@ export type {
   Severity,
   ShellScanOptions,
   TokenUsage,
+  TopicAggregation,
   TopicClassification,
   TopicResolution,
   Verdict,

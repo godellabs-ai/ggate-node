@@ -11,9 +11,19 @@ test("preserve scan coverage independently of pass and block verdicts", () => {
     const decision = decisionFromResponse({ ...response, verdict });
     assert.equal(decision.blocked, verdict === "block");
     assert.equal(decision.fail_open, false);
+    assert.equal(decision.console_outage_action, "allow");
+    assert.equal(decision.console_outage_fallback, "block");
+    assert.deepEqual(decision.document_intelligence?.coverage?.selected_chunk_indices, [0]);
+    assert.equal(decision.document_intelligence?.taxonomy.topic.aggregation?.classified_windows, 1);
     assert.deepEqual(decision.pipeline_status, response.pipeline_status);
     assert.deepEqual(decision.document_intelligence, response.document_intelligence);
   }
+});
+
+test("only an explicit verdict is a completed scan and blocked decisions retain their link", () => {
+  assert.equal(decisionFromResponse({ kind: "verdict" }).fail_open, true);
+  const url = "https://console.example/detections?event=test";
+  assert.equal(decisionFromResponse({ verdict: "block", detection_url: url }).detection_url, url);
 });
 
 test("old Console responses and queued passes need no added metadata", () => {

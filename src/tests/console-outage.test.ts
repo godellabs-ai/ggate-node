@@ -3,7 +3,7 @@ import test from "node:test";
 import { Client } from "../core/client.js";
 import { Config } from "../core/config.js";
 import { ConsoleTransport, GgateConsoleUnreachableError, GgateTransportError } from "../core/console-transport.js";
-import { CONSOLE_OUTAGE_MESSAGE } from "../core/decision.js";
+import { CONSOLE_OUTAGE_MESSAGE, decisionFromResponse } from "../core/decision.js";
 
 process.env.GGATE_AGENT_NAME ??= "Test Agent";
 process.env.GGATE_TEAM ??= "Test Team";
@@ -96,7 +96,7 @@ test("follows the operator switching back to allow", async () => {
   assert.equal((await sdk.scanPrompt("hello")).blocked, false);
 });
 
-async function scanWith(reply: () => Promise<Response>): Promise<unknown> {
+async function scanWith(reply: () => Promise<Response>, event = {}): Promise<unknown> {
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     if (String(input).endsWith("/api/v1/detection-engine/token")) {
@@ -106,14 +106,35 @@ async function scanWith(reply: () => Promise<Response>): Promise<unknown> {
   }) as typeof fetch;
   try {
     const transport = new ConsoleTransport(new Config({ consoleUrl: "https://console.example", apiKey: "godel_test" }));
-    await transport.request({ op: "scan_text", event: {}, redaction: {} });
-    return undefined;
+    return await transport.request({ op: "scan_text", event, redaction: {} });
   } catch (error) {
     return error;
   } finally {
     globalThis.fetch = original;
   }
 }
+
+test("partial responses enforce only a bound Console decision and retain model coverage", async () => {
+  for (const status of [503, 504]) {
+    for (const verdict of ["block", "warn", "pass"]) {
+      let calls = 0;
+      const reply = { event_id: "this-event", policy_resolved: true, decision: { verdict, message: "policy", fail_open: false },
+        model_status: { state: "partial", attempted: 2, completed: 1 } };
+      const result = await scanWith(async () => { calls++; return Response.json(reply, { status }); }, { id: "this-event" });
+      assert.ok(result && typeof result === "object" && "verdict" in result);
+      const decision = decisionFromResponse(result);
+      assert.equal(calls, 1);
+      assert.equal(decision.verdict, verdict);
+      assert.equal(decision.blocked, verdict === "block");
+      assert.equal(decision.fail_open, verdict !== "block");
+      assert.deepEqual(decision.model_status, reply.model_status);
+      for (const change of [{ event_id: "other" }, { policy_resolved: false }, { decision: { verdict } }]) {
+        const error = await scanWith(async () => Response.json({ ...reply, ...change }, { status }), { id: "this-event" });
+        assert.ok(error instanceof GgateTransportError);
+      }
+    }
+  }
+});
 
 test("no connection and gateway pages are unreachable", async () => {
   for (const reply of [

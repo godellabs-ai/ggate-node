@@ -30,6 +30,10 @@ export function failOpenDecision(message: string): Decision {
   };
 }
 
+function outageAction(value: unknown): "allow" | "block" | undefined {
+  return value === "allow" || value === "block" ? value : undefined;
+}
+
 /** Matches the Gate collectors (`ggate_core::console_outage::MESSAGE`). */
 export const CONSOLE_OUTAGE_MESSAGE =
   "The Gödel Gate Console is unreachable and your organization blocks AI activity until it is reachable again. Retry once the Console is back.";
@@ -65,7 +69,7 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
   }
   // Consoles before the unified block semantics serialized `hard_block`. Treat it as the current
   // `block` verdict so upgrading the SDK never weakens enforcement against an older Console.
-  const rawVerdict = response.verdict || "pass";
+  const rawVerdict = response.verdict;
   const verdict = (rawVerdict === "hard_block" ? "block" : rawVerdict) as Verdict;
   if (!["system", "pass", "warn", "block"].includes(verdict)) {
     return failOpenDecision(`unexpected scan verdict ${JSON.stringify(rawVerdict)}`);
@@ -78,7 +82,11 @@ export function decisionFromResponse(response: Record<string, any>): Decision {
     policy_source: response.policy_source ?? null,
     matched_policies: response.matched_policies ?? [],
     detection: response.detection ?? undefined,
+    detection_url: response.detection_url ?? undefined,
+    console_outage_action: outageAction(response.console_outage_action),
+    console_outage_fallback: outageAction(response.console_outage_fallback),
     document_intelligence: response.document_intelligence ?? null,
+    ...(response.model_status != null ? { model_status: response.model_status } : {}),
     ...(response.pipeline_status != null ? { pipeline_status: response.pipeline_status } : {}),
     ...(response.media_gate != null ? { media_gate: response.media_gate } : {}),
     fail_open: Boolean(response.fail_open),

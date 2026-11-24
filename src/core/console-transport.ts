@@ -45,6 +45,24 @@ function httpFailure(message: string, status: number, body: string): GgateTransp
     : new GgateTransportError(message);
 }
 
+/** A degraded scan can still carry the Console's policy decision for this event. */
+function partialScan(body: string, eventId: unknown): Record<string, any> | undefined {
+  let result;
+  try { result = JSON.parse(body); } catch { return undefined; }
+  const decision = result?.decision;
+  if (typeof eventId !== "string" || !eventId || result?.event_id !== eventId || result.policy_resolved !== true ||
+      !decision || !["pass", "warn", "block", "system"].includes(decision.verdict) ||
+      typeof decision.message !== "string" || typeof decision.fail_open !== "boolean" ||
+      (decision.kind != null && decision.kind !== "verdict")) return undefined;
+  return {
+    ...decision,
+    fail_open: decision.fail_open || decision.verdict !== "block",
+    model_status: result.model_status ?? { state: "unknown" },
+    pipeline_status: result.pipeline_status,
+    document_intelligence: result.document_intelligence,
+  };
+}
+
 /** A fetch that produced no response. A timeout means the Console may still be working on it. */
 function connectionFailure(baseUrl: string, error: unknown): GgateTransportError {
   const message = error instanceof Error ? error.message : String(error);
@@ -111,19 +129,20 @@ export class ConsoleTransport {
       this.accessToken = undefined;
       response = await this.scan(request, await this.token());
     }
-    if (GATEWAY_STATUSES.has(response.status)) {
-      // Transient upstream failure (a reverse proxy dropping a keep-alive
-      // connection, or the API restarting): re-scanning the same content is
-      // safe, so try once more before failing open.
-      response = await this.scan(request, await this.token());
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      throw new GgateTransportError(authFailure("scan", response.status));
-    }
-    if (!response.ok) {
-      const body = (await response.text().catch(() => "")).slice(0, 300);
-      throw httpFailure(`console scan failed: HTTP ${response.status} ${body}`, response.status, body);
+    for (let retries = 0; !response.ok; retries++) {
+      if (response.status === 401 || response.status === 403) {
+        throw new GgateTransportError(authFailure("scan", response.status));
+      }
+      const body = await response.text().catch(() => "");
+      if (response.status === 503 || response.status === 504) {
+        const resolved = partialScan(body, request.event?.id);
+        if (resolved) return resolved;
+      }
+      if (retries === 0 && GATEWAY_STATUSES.has(response.status)) {
+        response = await this.scan(request, await this.token());
+        continue;
+      }
+      throw httpFailure(`console scan failed: HTTP ${response.status}`, response.status, body);
     }
     try {
       return (await response.json()) as Record<string, any>;

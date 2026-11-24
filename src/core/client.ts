@@ -134,8 +134,9 @@ export class Client {
       // A queued event's verdict is how an `async` deployment first learns of a lock. From then on
       // every scan waits for the Console, so a release takes effect at the very next scan.
       if (request.op === "scan_text") {
-        this.learn(response, userKey(request.event));
-        this.observe(decisionFromResponse(response), this.subject(request.event));
+        const decision = decisionFromResponse(response);
+        this.learn(decision, userKey(request.event));
+        this.observe(decision, this.subject(request.event));
       }
     });
     this.breaker = new Breaker(this.config.cooldownSecs * 1000);
@@ -255,7 +256,10 @@ export class Client {
     if (decision.contained) {
       if (!this.locks.has(subject)) console.warn(`[ggate] Kill Switch active for this agent: ${decision.message}`);
       this.locks.set(subject, decision);
-    } else if (!decision.fail_open) {
+    } else if (decision.fail_open || decision.model_status) {
+      const held = this.locks.get(subject);
+      if (held) return killSwitchHeld(held, "the Console has not confirmed a release");
+    } else {
       if (this.locks.delete(subject)) console.warn("[ggate] Kill Switch released for this agent");
     }
     return decision;
@@ -267,11 +271,11 @@ export class Client {
   }
 
   /** Remember the Console's outage answer from an answered scan. Older Consoles omit it. */
-  private learn(response: Record<string, any> | undefined, user: string): void {
-    const action = response?.console_outage_action;
-    const fallback = response?.console_outage_fallback;
-    if (fallback === "allow" || fallback === "block") this.outageFallback = fallback;
-    if (action === "allow" || action === "block") {
+  private learn(decision: Decision, user: string): void {
+    const action = decision.console_outage_action;
+    const fallback = decision.console_outage_fallback;
+    if (fallback) this.outageFallback = fallback;
+    if (action) {
       this.outageActions.delete(user);
       this.outageActions.set(user, action);
       // Bounded: forget the users seen longest ago first.
@@ -311,10 +315,10 @@ export class Client {
     }
     try {
       const response = await this.transport.request(request);
-      this.learn(response, user);
-      const decision = this.observe(decisionFromResponse(response), subject);
+      const decision = decisionFromResponse(response);
+      this.learn(decision, user);
       this.breaker.reset();
-      return decision;
+      return this.observe(decision, subject);
     } catch (error) {
       const outage = error instanceof GgateConsoleUnreachableError;
       this.breaker.trip(outage);
